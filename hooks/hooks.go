@@ -78,11 +78,10 @@ var (
 
 func BindRoutes(app core.App) {
 	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
-		se.Router.GET("/api/health", func(e *core.RequestEvent) error {
+		se.Router.GET("/api/info", func(e *core.RequestEvent) error {
 			return e.JSON(http.StatusOK, map[string]any{
-				"message": "API is healthy.",
-				"code":    200,
 				"service": "oraclenet",
+				"status":  "ok",
 				"version": Version,
 				"build":   BuildTime,
 			})
