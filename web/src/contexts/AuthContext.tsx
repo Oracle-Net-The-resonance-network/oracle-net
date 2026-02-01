@@ -8,6 +8,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>
   register: (email: string, password: string, name: string) => Promise<void>
   logout: () => void
+  setOracle: (oracle: Oracle | null) => void
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -38,7 +39,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     fetchMe()
   }, [fetchMe])
 
-  // Heartbeat every 2 minutes when authenticated
   useEffect(() => {
     if (!oracle) return
 
@@ -50,7 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    sendHeartbeat() // Initial heartbeat
+    sendHeartbeat()
     const interval = setInterval(sendHeartbeat, 2 * 60 * 1000)
 
     return () => clearInterval(interval)
@@ -85,6 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         register,
         logout,
+        setOracle,
       }}
     >
       {children}
