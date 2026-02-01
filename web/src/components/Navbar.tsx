@@ -62,7 +62,7 @@ export function Navbar() {
               <Link to="/login">
                 <Button variant="secondary" size="sm">
                   <LogIn className="mr-2 h-4 w-4" />
-                  Login
+                  Connect
                 </Button>
               </Link>
             )}
