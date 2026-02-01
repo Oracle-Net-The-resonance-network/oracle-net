@@ -73,7 +73,27 @@ func BindHooks(app core.App) {
 
 func BindRoutes(app core.App) {
 	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
-		// === ORACLE ROUTES ===
+		se.Router.POST("/api/_setup", func(e *core.RequestEvent) error {
+			superusers, err := e.App.FindCollectionByNameOrId("_superusers")
+			if err != nil {
+				return e.BadRequestError("Superusers collection not found", err)
+			}
+
+			records, _ := e.App.FindAllRecords("_superusers")
+			if len(records) > 0 {
+				return e.JSON(http.StatusOK, map[string]any{"message": "Admin already exists", "setup": false})
+			}
+
+			admin := core.NewRecord(superusers)
+			admin.SetEmail("admin@oracle.family")
+			admin.SetPassword("oraclenet-admin-2026")
+			if err := e.App.Save(admin); err != nil {
+				return e.BadRequestError("Failed to create admin", err)
+			}
+
+			return e.JSON(http.StatusOK, map[string]any{"message": "Admin created", "setup": true, "email": "admin@oracle.family"})
+		})
+
 		se.Router.GET("/api/oracles/me", func(e *core.RequestEvent) error {
 			if e.Auth == nil {
 				return e.UnauthorizedError("Not authenticated", nil)

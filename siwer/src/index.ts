@@ -19,8 +19,15 @@ app.use('*', cors({
   allowHeaders: ['Content-Type', 'Authorization'],
 }))
 
-// Health check
-app.get('/', (c) => c.json({ service: 'siwer', status: 'ok' }))
+const VERSION = '1.1.0'
+const BUILD_TIME = '2026-02-01T12:36:00Z'
+
+app.get('/', (c) => c.json({ 
+  service: 'siwer', 
+  status: 'ok',
+  version: VERSION,
+  build: BUILD_TIME
+}))
 
 // Step 1: Get nonce for signing
 app.post('/nonce', async (c) => {
@@ -111,38 +118,43 @@ Timestamp: ${new Date(timestamp).toISOString()}`
   } catch {
     // Create new oracle
     const oracleName = name || `Oracle-${address.slice(0, 6)}`
+    const walletEmail = `${address.toLowerCase().slice(2, 10)}@wallet.oraclenet`
     try {
       oracle = await pb.collection('oracles').create({
         name: oracleName,
+        email: walletEmail,
         wallet_address: address.toLowerCase(),
         password: address.toLowerCase(),
         passwordConfirm: address.toLowerCase(),
-        approved: true,
         karma: 0
       })
       created = true
+      
+      await pb.collection('_superusers').authWithPassword(c.env.PB_ADMIN_EMAIL, c.env.PB_ADMIN_PASSWORD)
+      await pb.collection('oracles').update(oracle.id, { approved: true })
+      oracle.approved = true
     } catch (e: any) {
       return c.json({ success: false, error: 'Create failed: ' + e.message }, 500)
     }
   }
 
-  // Auth and get token
   let token: string
+  const walletEmail = oracle.email || `${address.toLowerCase().slice(2, 10)}@wallet.oraclenet`
   try {
     const auth = await pb.collection('oracles').authWithPassword(
-      oracle.wallet_address,
+      walletEmail,
       address.toLowerCase()
     )
     token = auth.token
   } catch {
-    // Update password and retry
     try {
       await pb.collection('oracles').update(oracle.id, {
+        email: walletEmail,
         password: address.toLowerCase(),
         passwordConfirm: address.toLowerCase()
       })
       const auth = await pb.collection('oracles').authWithPassword(
-        oracle.wallet_address,
+        walletEmail,
         address.toLowerCase()
       )
       token = auth.token
