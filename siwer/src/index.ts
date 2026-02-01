@@ -19,8 +19,8 @@ app.use('*', cors({
   allowHeaders: ['Content-Type', 'Authorization'],
 }))
 
-const VERSION = '1.1.0'
-const BUILD_TIME = '2026-02-01T12:36:00Z'
+const VERSION = '1.2.0'
+const BUILD_TIME = '2026-02-01T19:59:00+07:00'
 
 app.get('/', (c) => c.json({ 
   service: 'siwer', 

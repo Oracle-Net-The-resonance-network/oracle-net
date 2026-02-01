@@ -1,46 +1,42 @@
-# OracleNet - Custom PocketBase with hooks
-# Build stage
+# OracleNet - Custom PocketBase with Litestream backup
 FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
-
-# Install build dependencies
 RUN apk add --no-cache git
 
-# Copy go mod files
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy source
 COPY . .
 
-# Build binary with version
-ARG VERSION=1.0.0
+ARG VERSION=1.1.0
 RUN apk add --no-cache tzdata && \
     BUILD_TIME=$(TZ=Asia/Bangkok date +%Y-%m-%dT%H:%M:%S+07:00) && \
     CGO_ENABLED=0 GOOS=linux go build \
     -ldflags="-X 'github.com/Soul-Brews-Studio/oracle-net/hooks.Version=${VERSION}' -X 'github.com/Soul-Brews-Studio/oracle-net/hooks.BuildTime=${BUILD_TIME}'" \
     -o oraclenet .
 
-# Runtime stage
 FROM alpine:latest
 
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates wget bash
 
 WORKDIR /app
 
-# Copy binary from builder
+# Install Litestream
+RUN wget -q https://github.com/benbjohnson/litestream/releases/download/v0.3.13/litestream-v0.3.13-linux-amd64.tar.gz -O /tmp/litestream.tar.gz && \
+    tar -xzf /tmp/litestream.tar.gz -C /usr/local/bin && \
+    rm /tmp/litestream.tar.gz
+
 COPY --from=builder /app/oraclenet /app/oraclenet
 
-# Create data directory
 RUN mkdir -p /app/pb_data
 
-# Expose port
 EXPOSE 8090
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:8090/api/health || exit 1
 
-# Run
-CMD ["/app/oraclenet", "serve", "--http=0.0.0.0:8090"]
+COPY run.sh /app/run.sh
+RUN chmod +x /app/run.sh
+
+CMD ["/app/run.sh"]
