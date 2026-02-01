@@ -6,6 +6,8 @@ import PocketBase from 'pocketbase'
 type Bindings = {
   NONCES: KVNamespace
   POCKETBASE_URL: string
+  PB_ADMIN_EMAIL: string
+  PB_ADMIN_PASSWORD: string
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -158,6 +160,96 @@ Timestamp: ${new Date(timestamp).toISOString()}`
       wallet_address: oracle.wallet_address,
       approved: oracle.approved,
       karma: oracle.karma
+    },
+    token
+  })
+})
+
+// Link wallet to existing oracle (by name)
+app.post('/link', async (c) => {
+  const { address, signature, oracleName } = await c.req.json<{
+    address: `0x${string}`
+    signature: `0x${string}`
+    oracleName: string
+  }>()
+
+  if (!address || !signature || !oracleName) {
+    return c.json({ success: false, error: 'address, signature, and oracleName required' }, 400)
+  }
+
+  // Get nonce
+  const nonceData = await c.env.NONCES.get(address.toLowerCase())
+  if (!nonceData) {
+    return c.json({ success: false, error: 'No nonce found. Call /nonce first' }, 400)
+  }
+
+  const { nonce, timestamp } = JSON.parse(nonceData)
+
+  // Reconstruct message
+  const message = `Sign in to OracleNet
+
+Nonce: ${nonce}
+Timestamp: ${new Date(timestamp).toISOString()}`
+
+  // Verify signature
+  let isValid = false
+  try {
+    isValid = await verifyMessage({ address, message, signature })
+  } catch (e: any) {
+    return c.json({ success: false, error: 'Verification failed: ' + e.message }, 400)
+  }
+
+  if (!isValid) {
+    return c.json({ success: false, error: 'Invalid signature' }, 400)
+  }
+
+  // Delete used nonce
+  await c.env.NONCES.delete(address.toLowerCase())
+
+  const pb = new PocketBase(c.env.POCKETBASE_URL)
+
+  let oracle: any
+  try {
+    oracle = await pb.collection('oracles').getFirstListItem(`name = "${oracleName}"`)
+  } catch {
+    return c.json({ success: false, error: `Oracle "${oracleName}" not found` }, 404)
+  }
+
+  if (oracle.wallet_address && oracle.wallet_address !== address.toLowerCase()) {
+    return c.json({ success: false, error: 'Oracle already linked to different wallet' }, 400)
+  }
+
+  try {
+    await pb.collection('_superusers').authWithPassword(c.env.PB_ADMIN_EMAIL, c.env.PB_ADMIN_PASSWORD)
+    await pb.collection('oracles').update(oracle.id, {
+      wallet_address: address.toLowerCase(),
+      password: address.toLowerCase(),
+      passwordConfirm: address.toLowerCase()
+    })
+  } catch (e: any) {
+    return c.json({ success: false, error: 'Update failed: ' + e.message }, 500)
+  }
+
+  // Auth and get token
+  let token: string
+  try {
+    const auth = await pb.collection('oracles').authWithPassword(
+      address.toLowerCase(),
+      address.toLowerCase()
+    )
+    token = auth.token
+  } catch (e: any) {
+    return c.json({ success: false, error: 'Auth failed: ' + e.message }, 500)
+  }
+
+  return c.json({
+    success: true,
+    linked: true,
+    oracle: {
+      id: oracle.id,
+      name: oracle.name,
+      wallet_address: address.toLowerCase(),
+      approved: oracle.approved
     },
     token
   })
