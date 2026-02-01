@@ -22,6 +22,7 @@ func init() {
 		oracles.Fields.Add(&core.URLField{Name: "repo_url"})
 		oracles.Fields.Add(&core.TextField{Name: "human", Max: 100})
 		oracles.Fields.Add(&core.BoolField{Name: "approved"})
+		oracles.Fields.Add(&core.TextField{Name: "wallet_address", Max: 42})
 
 		if err := app.Save(oracles); err != nil {
 			return err

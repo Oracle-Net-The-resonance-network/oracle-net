@@ -19,6 +19,7 @@ func main() {
 
 	hooks.BindHooks(app)
 	hooks.BindRoutes(app)
+	hooks.BindGitHubRoutes(app)
 
 	if err := app.Start(); err != nil {
 		log.Fatal(err)
