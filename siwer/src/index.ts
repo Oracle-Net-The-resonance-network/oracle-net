@@ -15,20 +15,25 @@ const app = new Hono<{ Bindings: Bindings }>()
 
 // CORS
 app.use('*', cors({
-  origin: ['http://localhost:5173', 'https://oracle-net.laris.workers.dev'],
+  origin: [
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'http://localhost:5175',
+    'https://oracle-net.laris.workers.dev',
+  ],
   allowMethods: ['GET', 'POST', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization'],
 }))
 
-const VERSION = '2.0.0'
-const BUILD_TIME = '2026-02-01T23:45:00+07:00'
+const VERSION = '2.1.0'
+const BUILD_TIME = '2026-02-02T12:00:00+07:00'
 
 app.get('/', (c) => c.json({
   service: 'siwer',
   status: 'ok',
   version: VERSION,
   build: BUILD_TIME,
-  features: ['siwe', 'merkle-identity']
+  features: ['siwe', 'merkle-identity', 'delegated-auth']
 }))
 
 // ============================================
@@ -289,8 +294,12 @@ app.get('/check-verified', async (c) => {
     return c.json({ verified: false })
   }
 
-  const { github_username } = JSON.parse(data)
-  return c.json({ verified: true, github_username })
+  const parsed = JSON.parse(data)
+  return c.json({
+    verified: true,
+    github_username: parsed.github_username,
+    verified_at: parsed.verified_at
+  })
 })
 
 // Types
@@ -761,6 +770,468 @@ app.post('/claim-legacy', async (c) => {
       approved: oracle.approved
     },
     token
+  })
+})
+
+// ============================================
+// NEW: GitHub Issue Verification (Browser-only)
+// ============================================
+
+/**
+ * verify-github-issue - Verify GitHub via issue creation
+ * User creates issue on GitHub, then signs message in browser
+ * Backend fetches issue to get GitHub username
+ */
+app.post('/verify-github-issue', async (c) => {
+  const { wallet, issueUrl, signature, message } = await c.req.json<{
+    wallet: `0x${string}`
+    issueUrl: string
+    signature: `0x${string}`
+    message: string
+  }>()
+
+  if (!wallet || !issueUrl || !signature || !message) {
+    return c.json({ success: false, error: 'wallet, issueUrl, signature, and message required' }, 400)
+  }
+
+  // 1. Verify signature
+  let recovered: string
+  try {
+    recovered = await recoverMessageAddress({ message, signature })
+  } catch (e: any) {
+    return c.json({ success: false, error: 'Signature recovery failed: ' + e.message }, 400)
+  }
+
+  if (recovered.toLowerCase() !== wallet.toLowerCase()) {
+    return c.json({
+      success: false,
+      error: `Signature mismatch: expected ${wallet}, got ${recovered}`
+    }, 400)
+  }
+
+  // 2. Parse issue URL
+  // Format: https://github.com/owner/repo/issues/123
+  const issueMatch = issueUrl.match(/github\.com\/([^\/]+)\/([^\/]+)\/issues\/(\d+)/)
+  if (!issueMatch) {
+    return c.json({ success: false, error: 'Invalid GitHub issue URL format' }, 400)
+  }
+  const [, owner, repo, issueNumber] = issueMatch
+
+  // 3. Fetch issue from GitHub API
+  let issue: any
+  try {
+    const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`, {
+      headers: { 'User-Agent': 'OracleNet-Siwer' }
+    })
+    if (!res.ok) throw new Error(`Issue fetch failed: ${res.status}`)
+    issue = await res.json()
+  } catch (e: any) {
+    return c.json({ success: false, error: 'Failed to fetch issue: ' + e.message }, 400)
+  }
+
+  // 4. Verify issue contains wallet address
+  const issueBody = issue.body || ''
+  if (!issueBody.toLowerCase().includes(wallet.toLowerCase())) {
+    return c.json({
+      success: false,
+      error: 'Issue does not contain your wallet address'
+    }, 400)
+  }
+
+  // 5. Get GitHub username from issue author
+  const githubUsername = issue.user?.login
+  if (!githubUsername) {
+    return c.json({ success: false, error: 'Could not determine issue author' }, 400)
+  }
+
+  // 6. Store minimal data: wallet → github (permanent verification)
+  // Only store what's needed for verification - oracle details belong in PocketBase
+  await c.env.NONCES.put(`verified:${wallet.toLowerCase()}`, JSON.stringify({
+    github_username: githubUsername,
+    verified_at: new Date().toISOString()
+  }))
+
+  return c.json({
+    success: true,
+    github_username: githubUsername,
+    wallet: wallet.toLowerCase()
+  })
+})
+
+// ============================================
+// NEW: Delegated Authorization (No Private Key Sharing)
+// ============================================
+
+/**
+ * Step 1: auth-request - Bot registers authorization request
+ * Bot calls this to register its intent to claim an oracle
+ * Returns a request ID that human uses to authorize
+ */
+app.post('/auth-request', async (c) => {
+  const { botWallet, oracleName, birthIssue } = await c.req.json<{
+    botWallet: `0x${string}`
+    oracleName: string
+    birthIssue: number
+  }>()
+
+  if (!botWallet || !oracleName || !birthIssue) {
+    return c.json({ success: false, error: 'botWallet, oracleName, and birthIssue required' }, 400)
+  }
+
+  const reqId = `req_${crypto.randomUUID().slice(0, 12)}`
+  const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString() // 30 minutes
+
+  // Store: reqId → { botWallet, oracleName, birthIssue, expiresAt }
+  await c.env.NONCES.put(`authreq:${reqId}`, JSON.stringify({
+    botWallet: botWallet.toLowerCase(),
+    oracleName,
+    birthIssue,
+    createdAt: new Date().toISOString(),
+    expiresAt,
+    status: 'pending'
+  }), { expirationTtl: 1800 }) // 30 min TTL
+
+  return c.json({
+    success: true,
+    reqId,
+    expiresAt
+  })
+})
+
+/**
+ * Step 2: authorize - Human signs authorization for bot
+ * Human's browser submits signed authorization
+ * Returns an auth code (base64 encoded JSON) for the bot
+ */
+app.post('/authorize', async (c) => {
+  const { reqId, humanWallet, signature, message } = await c.req.json<{
+    reqId: string
+    humanWallet: `0x${string}`
+    signature: `0x${string}`
+    message: string
+  }>()
+
+  if (!reqId || !humanWallet || !signature || !message) {
+    return c.json({ success: false, error: 'reqId, humanWallet, signature, and message required' }, 400)
+  }
+
+  // 1. Check auth request exists
+  const reqData = await c.env.NONCES.get(`authreq:${reqId}`)
+  if (!reqData) {
+    return c.json({ success: false, error: 'Auth request not found or expired' }, 404)
+  }
+  const req = JSON.parse(reqData)
+
+  // 2. Check human is verified
+  const verifiedData = await c.env.NONCES.get(`verified:${humanWallet.toLowerCase()}`)
+  if (!verifiedData) {
+    return c.json({ success: false, error: 'Human not verified. Run verify-github first.' }, 403)
+  }
+  const verified = JSON.parse(verifiedData)
+
+  // 3. Verify signature
+  let recovered: string
+  try {
+    recovered = await recoverMessageAddress({ message, signature })
+  } catch (e: any) {
+    return c.json({ success: false, error: 'Signature recovery failed: ' + e.message }, 400)
+  }
+
+  if (recovered.toLowerCase() !== humanWallet.toLowerCase()) {
+    return c.json({
+      success: false,
+      error: `Signature mismatch: expected ${humanWallet}, got ${recovered}`
+    }, 400)
+  }
+
+  // 4. Build auth code payload
+  const authPayload = {
+    msg: message,
+    sig: signature,
+    human: humanWallet.toLowerCase(),
+    bot: req.botWallet,
+    oracle: req.oracleName,
+    issue: req.birthIssue,
+    reqId,
+    github: verified.github_username,
+    ts: new Date().toISOString()
+  }
+
+  // Encode as base64
+  const authCode = `AUTH:${btoa(JSON.stringify(authPayload))}`
+
+  // 5. Mark request as authorized
+  await c.env.NONCES.put(`authreq:${reqId}`, JSON.stringify({
+    ...req,
+    status: 'authorized',
+    humanWallet: humanWallet.toLowerCase(),
+    github_username: verified.github_username,
+    authorizedAt: new Date().toISOString()
+  }), { expirationTtl: 1800 })
+
+  return c.json({
+    success: true,
+    authCode
+  })
+})
+
+/**
+ * Step 3: claim-delegated - Bot claims oracle with auth code
+ * Bot submits auth code + own signature
+ * Creates Oracle in PocketBase with github_username from human
+ */
+app.post('/claim-delegated', async (c) => {
+  const { authCode, botSignature, botMessage } = await c.req.json<{
+    authCode: string
+    botSignature: `0x${string}`
+    botMessage: string
+  }>()
+
+  if (!authCode || !botSignature || !botMessage) {
+    return c.json({ success: false, error: 'authCode, botSignature, and botMessage required' }, 400)
+  }
+
+  // 1. Decode auth code
+  if (!authCode.startsWith('AUTH:')) {
+    return c.json({ success: false, error: 'Invalid auth code format' }, 400)
+  }
+
+  let payload: {
+    msg: string
+    sig: string
+    human: string
+    bot: string
+    oracle: string
+    issue: number
+    reqId: string
+    github: string
+    ts: string
+  }
+  try {
+    payload = JSON.parse(atob(authCode.slice(5)))
+  } catch {
+    return c.json({ success: false, error: 'Failed to decode auth code' }, 400)
+  }
+
+  // 2. Verify auth request exists and is authorized
+  const reqData = await c.env.NONCES.get(`authreq:${payload.reqId}`)
+  if (!reqData) {
+    return c.json({ success: false, error: 'Auth request not found or expired' }, 404)
+  }
+  const req = JSON.parse(reqData)
+
+  if (req.status !== 'authorized') {
+    return c.json({ success: false, error: 'Auth request not yet authorized by human' }, 400)
+  }
+
+  // 3. Verify human signature in auth code
+  let humanRecovered: string
+  try {
+    humanRecovered = await recoverMessageAddress({
+      message: payload.msg,
+      signature: payload.sig as `0x${string}`
+    })
+  } catch (e: any) {
+    return c.json({ success: false, error: 'Human signature recovery failed: ' + e.message }, 400)
+  }
+
+  if (humanRecovered.toLowerCase() !== payload.human) {
+    return c.json({
+      success: false,
+      error: `Human signature mismatch in auth code`
+    }, 400)
+  }
+
+  // 4. Verify bot signature
+  let botRecovered: string
+  try {
+    botRecovered = await recoverMessageAddress({
+      message: botMessage,
+      signature: botSignature
+    })
+  } catch (e: any) {
+    return c.json({ success: false, error: 'Bot signature recovery failed: ' + e.message }, 400)
+  }
+
+  if (botRecovered.toLowerCase() !== payload.bot) {
+    return c.json({
+      success: false,
+      error: `Bot signature mismatch: expected ${payload.bot}, got ${botRecovered}`
+    }, 400)
+  }
+
+  // 5. Mark request as claimed (single-use)
+  await c.env.NONCES.put(`authreq:${payload.reqId}`, JSON.stringify({
+    ...req,
+    status: 'claimed',
+    claimedAt: new Date().toISOString()
+  }), { expirationTtl: 60 }) // Short TTL after claim
+
+  // 6. Create or update Oracle in PocketBase
+  const pb = new PocketBase(c.env.POCKETBASE_URL)
+  const botWallet = payload.bot
+
+  let oracle: any
+  let created = false
+
+  try {
+    // First check if oracle with this wallet exists
+    oracle = await pb.collection('oracles').getFirstListItem(
+      `wallet_address = "${botWallet.toLowerCase()}"`
+    )
+    // Update with verified info
+    await pb.collection('_superusers').authWithPassword(c.env.PB_ADMIN_EMAIL, c.env.PB_ADMIN_PASSWORD)
+    await pb.collection('oracles').update(oracle.id, {
+      name: payload.oracle,
+      github_username: payload.github,
+      birth_issue: payload.issue,
+      approved: true
+    })
+    oracle.name = payload.oracle
+    oracle.github_username = payload.github
+    oracle.birth_issue = payload.issue
+    oracle.approved = true
+  } catch {
+    // Create new oracle
+    const walletEmail = `${botWallet.toLowerCase().slice(2, 10)}@wallet.oraclenet`
+    try {
+      await pb.collection('_superusers').authWithPassword(c.env.PB_ADMIN_EMAIL, c.env.PB_ADMIN_PASSWORD)
+      oracle = await pb.collection('oracles').create({
+        name: payload.oracle,
+        email: walletEmail,
+        wallet_address: botWallet.toLowerCase(),
+        github_username: payload.github,
+        birth_issue: payload.issue,
+        password: botWallet.toLowerCase(),
+        passwordConfirm: botWallet.toLowerCase(),
+        karma: 0,
+        approved: true
+      })
+      created = true
+    } catch (e: any) {
+      return c.json({ success: false, error: 'Create failed: ' + e.message }, 500)
+    }
+  }
+
+  // Get auth token
+  let token: string
+  const walletEmail = oracle.email || `${botWallet.toLowerCase().slice(2, 10)}@wallet.oraclenet`
+  try {
+    const auth = await pb.collection('oracles').authWithPassword(
+      walletEmail,
+      botWallet.toLowerCase()
+    )
+    token = auth.token
+  } catch (e: any) {
+    return c.json({ success: false, error: 'Auth failed: ' + e.message }, 500)
+  }
+
+  return c.json({
+    success: true,
+    created,
+    oracle: {
+      id: oracle.id,
+      name: oracle.name,
+      wallet_address: oracle.wallet_address,
+      github_username: oracle.github_username,
+      birth_issue: oracle.birth_issue,
+      approved: oracle.approved
+    },
+    token
+  })
+})
+
+/**
+ * GET /auth-request/:reqId - Check auth request status
+ * Used by bot to poll for authorization
+ */
+app.get('/auth-request/:reqId', async (c) => {
+  const reqId = c.req.param('reqId')
+
+  const reqData = await c.env.NONCES.get(`authreq:${reqId}`)
+  if (!reqData) {
+    return c.json({ success: false, error: 'Auth request not found or expired' }, 404)
+  }
+
+  const req = JSON.parse(reqData)
+  return c.json({
+    success: true,
+    status: req.status,
+    oracleName: req.oracleName,
+    birthIssue: req.birthIssue,
+    botWallet: req.botWallet,
+    expiresAt: req.expiresAt
+  })
+})
+
+// ============================================
+// Admin: Cleanup endpoints
+// ============================================
+
+/**
+ * DELETE /verified/:wallet - Remove wallet verification
+ * Requires signature from the wallet being deleted
+ */
+app.delete('/verified/:wallet', async (c) => {
+  const wallet = c.req.param('wallet')
+  const { signature, message } = await c.req.json<{
+    signature: `0x${string}`
+    message: string
+  }>()
+
+  if (!signature || !message) {
+    return c.json({ success: false, error: 'signature and message required' }, 400)
+  }
+
+  // Verify signature matches wallet
+  let recovered: string
+  try {
+    recovered = await recoverMessageAddress({ message, signature })
+  } catch (e: any) {
+    return c.json({ success: false, error: 'Signature recovery failed: ' + e.message }, 400)
+  }
+
+  if (recovered.toLowerCase() !== wallet.toLowerCase()) {
+    return c.json({
+      success: false,
+      error: `Signature mismatch: expected ${wallet}, got ${recovered}`
+    }, 400)
+  }
+
+  // Delete verification
+  await c.env.NONCES.delete(`verified:${wallet.toLowerCase()}`)
+
+  // Also delete any bot assignments for this wallet
+  await c.env.NONCES.delete(`bot:${wallet.toLowerCase()}`)
+
+  return c.json({
+    success: true,
+    deleted: wallet.toLowerCase()
+  })
+})
+
+/**
+ * POST /admin/cleanup - Admin cleanup (requires admin auth)
+ */
+app.post('/admin/cleanup', async (c) => {
+  const { wallet, adminEmail, adminPassword } = await c.req.json<{
+    wallet: string
+    adminEmail: string
+    adminPassword: string
+  }>()
+
+  // Verify admin credentials
+  if (adminEmail !== c.env.PB_ADMIN_EMAIL || adminPassword !== c.env.PB_ADMIN_PASSWORD) {
+    return c.json({ success: false, error: 'Invalid admin credentials' }, 403)
+  }
+
+  // Delete verification
+  await c.env.NONCES.delete(`verified:${wallet.toLowerCase()}`)
+  await c.env.NONCES.delete(`bot:${wallet.toLowerCase()}`)
+
+  return c.json({
+    success: true,
+    deleted: wallet.toLowerCase()
   })
 })
 

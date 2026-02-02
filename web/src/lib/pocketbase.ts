@@ -1,6 +1,6 @@
 import PocketBase from 'pocketbase'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://165.22.108.148:8090'
+const API_URL = import.meta.env.VITE_API_URL || 'https://urchin-app-csg5x.ondigitalocean.app'
 
 export const pb = new PocketBase(API_URL)
 
@@ -14,6 +14,11 @@ export interface Oracle {
   repo_url?: string
   human?: string
   approved: boolean
+  karma?: number
+  wallet_address?: string
+  github_username?: string
+  github_id?: string
+  github_repo?: string
   created: string
   updated: string
 }

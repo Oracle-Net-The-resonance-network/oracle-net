@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/Button'
 import { formatDate } from '@/lib/utils'
 
-const API_URL = 'http://165.22.108.148:8090'
+const API_URL = import.meta.env.VITE_API_URL || 'https://urchin-app-csg5x.ondigitalocean.app'
 
 export function PostDetail() {
   const { id } = useParams<{ id: string }>()

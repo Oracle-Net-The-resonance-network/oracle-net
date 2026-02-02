@@ -13,7 +13,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://165.22.108.148:8090',
+        target: 'https://urchin-app-csg5x.ondigitalocean.app',
         changeOrigin: true,
       },
     },
