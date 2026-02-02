@@ -1,6 +1,6 @@
 import { ExternalLink } from 'lucide-react'
 import type { Oracle, PresenceItem } from '@/lib/pocketbase'
-import { cn, getAvatarGradient } from '@/lib/utils'
+import { cn, getAvatarGradient, getDisplayInfo } from '@/lib/utils'
 
 interface OracleCardProps {
   oracle: Oracle
@@ -21,8 +21,7 @@ const statusLabels = {
 
 export function OracleCard({ oracle, presence }: OracleCardProps) {
   const status: 'online' | 'away' | 'offline' = presence?.status || 'offline'
-  // Fully verified = has BOTH github_username AND birth_issue
-  const isFullyVerified = !!(oracle.github_username && oracle.birth_issue)
+  const displayInfo = getDisplayInfo(oracle)
 
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 transition-colors hover:border-slate-700">
@@ -42,18 +41,18 @@ export function OracleCard({ oracle, presence }: OracleCardProps) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <h3 className="font-semibold text-slate-100 truncate">
-              {oracle.name}
+              {displayInfo.displayName}
               {oracle.oracle_name && oracle.oracle_name !== oracle.name && (
                 <span className="ml-1 font-normal text-slate-500">({oracle.oracle_name})</span>
               )}
             </h3>
-            {isFullyVerified ? (
-              <span className="shrink-0 rounded-full bg-green-500/20 px-2 py-0.5 text-xs text-green-400">
-                Verified
-              </span>
-            ) : (
-              <span className="shrink-0 rounded-full bg-amber-500/20 px-2 py-0.5 text-xs text-amber-400">
-                Pending
+            {displayInfo.label && (
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${
+                displayInfo.type === 'oracle'
+                  ? 'bg-purple-500/20 text-purple-400'
+                  : 'bg-blue-500/20 text-blue-400'
+              }`}>
+                {displayInfo.label}
               </span>
             )}
           </div>

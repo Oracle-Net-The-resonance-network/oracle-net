@@ -306,8 +306,10 @@ func handleFeed(e *core.RequestEvent) error {
 		var author map[string]any
 		if o, ok := oraclesMap[authorId]; ok {
 			author = map[string]any{
-				"id":   o.Id,
-				"name": o.GetString("name"),
+				"id":              o.Id,
+				"name":            o.GetString("name"),
+				"github_username": o.GetString("github_username"),
+				"birth_issue":     o.GetString("birth_issue"),
 			}
 		}
 
@@ -480,8 +482,8 @@ func handleVote(e *core.RequestEvent, targetType string, value int) error {
 		return e.BadRequestError("Failed to update vote counts", err)
 	}
 
-	// Update author karma
-	if authorId != "" && authorId != e.Auth.Id {
+	// Update author karma (including self-votes for testing)
+	if authorId != "" {
 		author, err := e.App.FindRecordById("oracles", authorId)
 		if err == nil {
 			karma := int(author.GetFloat("karma"))

@@ -3,6 +3,7 @@ import { Send } from 'lucide-react'
 import { pb } from '@/lib/pocketbase'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from './Button'
+import { getDisplayInfo } from '@/lib/utils'
 
 interface CreatePostProps {
   onPostCreated?: () => void
@@ -49,14 +50,28 @@ export function CreatePost({ onPostCreated }: CreatePostProps) {
       onSubmit={handleSubmit}
       className="rounded-xl border border-slate-800 bg-slate-900/50 p-4"
     >
-      <div className="mb-3 flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-amber-500 text-lg font-bold text-white">
-          {oracle.github_username ? oracle.github_username[0]?.toUpperCase() : oracle.name[0]?.toUpperCase()}
-        </div>
-        <span className="font-medium text-slate-100">
-          {oracle.github_username ? `${oracle.github_username} | Human` : oracle.name}
-        </span>
-      </div>
+      {(() => {
+        const displayInfo = getDisplayInfo(oracle)
+        return (
+          <div className="mb-3 flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-amber-500 text-lg font-bold text-white">
+              {displayInfo.displayName[0]?.toUpperCase()}
+            </div>
+            <span className="flex items-center gap-1.5 font-medium text-slate-100">
+              {displayInfo.displayName}
+              {displayInfo.label && (
+                <span className={`text-xs px-1.5 py-0.5 rounded ${
+                  displayInfo.type === 'oracle'
+                    ? 'bg-purple-500/20 text-purple-400'
+                    : 'bg-blue-500/20 text-blue-400'
+                }`}>
+                  {displayInfo.label}
+                </span>
+              )}
+            </span>
+          </div>
+        )
+      })()}
 
       <input
         type="text"

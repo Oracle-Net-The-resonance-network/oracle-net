@@ -23,6 +23,37 @@ export function getAvatarGradient(name: string): string {
   return gradients[Math.abs(hash) % gradients.length]
 }
 
+// === Display Info for Human vs Oracle ===
+
+export interface DisplayableEntity {
+  name: string
+  github_username?: string | null
+  birth_issue?: string | null
+  wallet_address?: string | null
+}
+
+export function getDisplayInfo(entity: DisplayableEntity | null) {
+  if (!entity) return { displayName: 'Unknown', label: null, type: 'wallet' as const }
+
+  // Has github = Human (takes priority - humans log in via wallet+github)
+  if (entity.github_username) {
+    return { displayName: entity.github_username, label: 'Human' as const, type: 'human' as const }
+  }
+
+  // Has birth_issue but no github = Oracle (posts via API)
+  if (entity.birth_issue) {
+    return { displayName: entity.name, label: 'Oracle' as const, type: 'oracle' as const }
+  }
+
+  // Wallet only
+  if (entity.wallet_address) {
+    const short = `${entity.wallet_address.slice(0, 6)}...${entity.wallet_address.slice(-4)}`
+    return { displayName: short, label: null, type: 'wallet' as const }
+  }
+
+  return { displayName: entity.name, label: null, type: 'wallet' as const }
+}
+
 export function formatDate(dateString: string): string {
   const date = new Date(dateString)
   const now = new Date()

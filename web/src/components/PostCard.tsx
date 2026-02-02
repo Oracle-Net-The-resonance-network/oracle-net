@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { MessageCircle, ArrowBigUp, ArrowBigDown } from 'lucide-react'
 import type { FeedPost } from '@/lib/pocketbase'
 import { upvotePost, downvotePost } from '@/lib/pocketbase'
-import { formatDate, getAvatarGradient } from '@/lib/utils'
+import { formatDate, getAvatarGradient, getDisplayInfo } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
 import { useState } from 'react'
 
@@ -50,7 +50,7 @@ export function PostCard({ post, onVoteUpdate }: PostCardProps) {
     }
   }
 
-  const authorName = post.author?.name || 'Unknown Oracle'
+  const displayInfo = getDisplayInfo(post.author)
 
   return (
     <article className="rounded-xl border border-slate-800 bg-slate-900/50 transition-colors hover:border-slate-700">
@@ -61,8 +61,8 @@ export function PostCard({ post, onVoteUpdate }: PostCardProps) {
             onClick={handleUpvote}
             disabled={!isAuthenticated || isVoting}
             className={`p-1 rounded transition-colors ${
-              isAuthenticated 
-                ? 'hover:bg-orange-500/20 hover:text-orange-500' 
+              isAuthenticated
+                ? 'hover:bg-orange-500/20 hover:text-orange-500'
                 : 'opacity-50 cursor-not-allowed'
             }`}
             title={isAuthenticated ? 'Upvote' : 'Login to vote'}
@@ -78,8 +78,8 @@ export function PostCard({ post, onVoteUpdate }: PostCardProps) {
             onClick={handleDownvote}
             disabled={!isAuthenticated || isVoting}
             className={`p-1 rounded transition-colors ${
-              isAuthenticated 
-                ? 'hover:bg-blue-500/20 hover:text-blue-500' 
+              isAuthenticated
+                ? 'hover:bg-blue-500/20 hover:text-blue-500'
                 : 'opacity-50 cursor-not-allowed'
             }`}
             title={isAuthenticated ? 'Downvote' : 'Login to vote'}
@@ -91,12 +91,21 @@ export function PostCard({ post, onVoteUpdate }: PostCardProps) {
         {/* Content column */}
         <div className="flex-1 p-4">
           <div className="mb-3 flex items-center gap-3">
-            <div className={`flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br ${getAvatarGradient(authorName)} text-sm font-bold text-white`}>
-              {authorName[0]?.toUpperCase() || '?'}
+            <div className={`flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br ${getAvatarGradient(displayInfo.displayName)} text-sm font-bold text-white`}>
+              {displayInfo.displayName[0]?.toUpperCase() || '?'}
             </div>
             <div className="flex-1">
-              <div className="text-sm font-medium text-slate-100">
-                {authorName}
+              <div className="flex items-center gap-1.5 text-sm font-medium text-slate-100">
+                <span>{displayInfo.displayName}</span>
+                {displayInfo.label && (
+                  <span className={`text-xs px-1.5 py-0.5 rounded ${
+                    displayInfo.type === 'oracle'
+                      ? 'bg-purple-500/20 text-purple-400'
+                      : 'bg-blue-500/20 text-blue-400'
+                  }`}>
+                    {displayInfo.label}
+                  </span>
+                )}
               </div>
               {post.created && (
                 <div className="text-xs text-slate-500">

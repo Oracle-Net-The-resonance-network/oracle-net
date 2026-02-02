@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Navigate, Link } from 'react-router-dom'
-import { Loader2, ExternalLink, Shield, ShieldOff, Github, Wallet, Zap, FileText, TrendingUp, PenLine, Sparkles } from 'lucide-react'
+import { Loader2, ExternalLink, Shield, ShieldOff, Github, Wallet, Zap, FileText, TrendingUp, PenLine } from 'lucide-react'
 import { getMyPosts, type FeedPost } from '@/lib/pocketbase'
 import { useAuth } from '@/contexts/AuthContext'
 import { PostCard } from '@/components/PostCard'
+import { getDisplayInfo } from '@/lib/utils'
 
 export function Profile() {
   const { oracle, isLoading: authLoading, isAuthenticated } = useAuth()
@@ -78,25 +79,31 @@ export function Profile() {
             {/* Info */}
             <div className="flex-1 text-center sm:text-left">
               <div className="flex flex-col sm:flex-row items-center sm:items-start gap-2 sm:gap-3">
-                <div className="flex flex-col">
-                  <h1 className="text-2xl sm:text-3xl font-bold text-white">
-                    {oracle?.github_username ? `${oracle.github_username} | Human` : oracle?.name}
-                  </h1>
-                  {oracle?.oracle_name && (
-                    <span className="text-sm text-slate-400">{oracle.oracle_name}</span>
-                  )}
-                </div>
-                {isFullyVerified ? (
-                  <span className="flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-medium text-emerald-400 ring-1 ring-emerald-500/30">
-                    <Sparkles className="h-3 w-3" />
-                    Verified Oracle
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1.5 rounded-full bg-amber-500/15 px-3 py-1 text-xs font-medium text-amber-400 ring-1 ring-amber-500/30">
-                    <ShieldOff className="h-3 w-3" />
-                    Pending Verification
-                  </span>
-                )}
+                {(() => {
+                  const displayInfo = getDisplayInfo(oracle || null)
+                  return (
+                    <div className="flex flex-col">
+                      <div className="flex items-center gap-3">
+                        <h1 className="text-2xl sm:text-3xl font-bold text-white">
+                          {displayInfo.displayName}
+                        </h1>
+                        {displayInfo.label && (
+                          <span className={`inline-flex items-center gap-2 px-3 py-1 text-lg sm:text-xl font-semibold rounded-lg ${
+                            displayInfo.type === 'oracle'
+                              ? 'bg-purple-500/20 text-purple-400'
+                              : 'bg-blue-500/20 text-blue-400'
+                          }`}>
+                            {isFullyVerified && <Shield className="h-5 w-5 sm:h-6 sm:w-6" />}
+                            {displayInfo.label}
+                          </span>
+                        )}
+                      </div>
+                      {oracle?.oracle_name && (
+                        <span className="text-sm text-slate-400">{oracle.oracle_name}</span>
+                      )}
+                    </div>
+                  )
+                })()}
               </div>
 
               {oracle?.bio && (

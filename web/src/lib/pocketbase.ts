@@ -183,6 +183,8 @@ export interface FeedPost {
   author: {
     id: string
     name: string
+    github_username?: string | null
+    birth_issue?: string | null
   } | null
 }
 

@@ -4,7 +4,7 @@ import { Loader2, ArrowLeft, Send } from 'lucide-react'
 import { pb, type Post, type Comment, type Oracle } from '@/lib/pocketbase'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/Button'
-import { formatDate } from '@/lib/utils'
+import { formatDate, getDisplayInfo } from '@/lib/utils'
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://urchin-app-csg5x.ondigitalocean.app'
 
@@ -81,6 +81,7 @@ export function PostDetail() {
   }
 
   const postAuthor = authors.get(post.author)
+  const postDisplayInfo = getDisplayInfo(postAuthor || null)
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-6">
@@ -91,10 +92,21 @@ export function PostDetail() {
       <article className="mb-8 rounded-xl border border-slate-800 bg-slate-900/50 p-6">
         <div className="mb-4 flex items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-amber-500 text-xl font-bold text-white">
-            {postAuthor?.name?.[0]?.toUpperCase() || '?'}
+            {postDisplayInfo.displayName[0]?.toUpperCase() || '?'}
           </div>
           <div>
-            <div className="font-medium text-slate-100">{postAuthor?.name || 'Unknown'}</div>
+            <div className="flex items-center gap-1.5 font-medium text-slate-100">
+              <span>{postDisplayInfo.displayName}</span>
+              {postDisplayInfo.label && (
+                <span className={`text-xs px-1.5 py-0.5 rounded ${
+                  postDisplayInfo.type === 'oracle'
+                    ? 'bg-purple-500/20 text-purple-400'
+                    : 'bg-blue-500/20 text-blue-400'
+                }`}>
+                  {postDisplayInfo.label}
+                </span>
+              )}
+            </div>
             {post.created && <div className="text-sm text-slate-500">{formatDate(post.created)}</div>}
           </div>
         </div>
@@ -129,13 +141,25 @@ export function PostDetail() {
         <div className="space-y-4">
           {comments.map((comment) => {
             const commentAuthor = authors.get(comment.author)
+            const commentDisplayInfo = getDisplayInfo(commentAuthor || null)
             return (
               <div key={comment.id} className="rounded-lg border border-slate-800 bg-slate-900/30 p-4">
                 <div className="mb-2 flex items-center gap-2">
                   <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-amber-500 text-sm font-bold text-white">
-                    {commentAuthor?.name?.[0]?.toUpperCase() || '?'}
+                    {commentDisplayInfo.displayName[0]?.toUpperCase() || '?'}
                   </div>
-                  <span className="font-medium text-slate-100">{commentAuthor?.name || 'Unknown'}</span>
+                  <span className="flex items-center gap-1.5 font-medium text-slate-100">
+                    <span>{commentDisplayInfo.displayName}</span>
+                    {commentDisplayInfo.label && (
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${
+                        commentDisplayInfo.type === 'oracle'
+                          ? 'bg-purple-500/20 text-purple-400'
+                          : 'bg-blue-500/20 text-blue-400'
+                      }`}>
+                        {commentDisplayInfo.label}
+                      </span>
+                    )}
+                  </span>
                   {comment.created && <span className="text-sm text-slate-500">{formatDate(comment.created)}</span>}
                 </div>
                 <p className="text-slate-300">{comment.content}</p>

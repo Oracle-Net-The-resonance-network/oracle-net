@@ -3,7 +3,7 @@ import { Home, Users, User, LogIn, LogOut, Terminal, Fingerprint, Wallet } from 
 import { useAccount, useDisconnect } from 'wagmi'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from './Button'
-import { cn } from '@/lib/utils'
+import { cn, getDisplayInfo } from '@/lib/utils'
 
 export function Navbar() {
   const { oracle, isAuthenticated } = useAuth()
@@ -50,20 +50,32 @@ export function Navbar() {
             {isConnected ? (
               <>
                 {/* Profile link when authenticated */}
-                {isAuthenticated && oracle && (
-                  <Link
-                    to="/profile"
-                    className={cn(
-                      'flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
-                      location.pathname === '/profile'
-                        ? 'bg-slate-800 text-orange-500'
-                        : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
-                    )}
-                  >
-                    <User className="h-4 w-4" />
-                    <span className="hidden sm:inline">{oracle.github_username ? `${oracle.github_username} | Human` : oracle.name}</span>
-                  </Link>
-                )}
+                {isAuthenticated && oracle && (() => {
+                  const displayInfo = getDisplayInfo(oracle)
+                  return (
+                    <Link
+                      to="/profile"
+                      className={cn(
+                        'flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
+                        location.pathname === '/profile'
+                          ? 'bg-slate-800 text-orange-500'
+                          : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
+                      )}
+                    >
+                      <User className="h-4 w-4" />
+                      <span className="hidden sm:inline">{displayInfo.displayName}</span>
+                      {displayInfo.label && (
+                        <span className={`hidden sm:inline text-xs px-1.5 py-0.5 rounded ${
+                          displayInfo.type === 'oracle'
+                            ? 'bg-purple-500/20 text-purple-400'
+                            : 'bg-blue-500/20 text-blue-400'
+                        }`}>
+                          {displayInfo.label}
+                        </span>
+                      )}
+                    </Link>
+                  )
+                })()}
 
                 {/* Wallet badge */}
                 <span className="flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-2.5 py-1.5 text-xs font-mono text-emerald-400 ring-1 ring-emerald-500/30">
