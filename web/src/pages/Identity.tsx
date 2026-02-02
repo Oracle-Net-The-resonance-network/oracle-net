@@ -338,19 +338,43 @@ bun scripts/oraclenet.ts assign` : ''
                   Signed! Now create a verification issue on GitHub:
                 </div>
 
-                {/* gh command */}
+                {/* LLM-Expanded Command Block */}
                 <div>
-                  <p className="text-xs text-slate-500 mb-2">Run this command:</p>
+                  <p className="text-xs text-slate-500 mb-2">Copy for AI agent:</p>
                   <div className="relative">
-                    <pre className="rounded-lg bg-slate-900 p-4 text-xs text-slate-300 whitespace-pre-wrap overflow-auto ring-1 ring-slate-800 font-mono">
-{`gh issue create \\
+                    <pre className="rounded-lg bg-slate-900 p-4 text-xs text-slate-300 whitespace-pre-wrap overflow-auto ring-1 ring-slate-800 font-mono leading-relaxed">
+{`Oracle Identity Verification
+
+This command posts a signed verification to GitHub.
+The signature proves wallet ownership. The issue author proves GitHub identity.
+After posting, paste the issue URL below to complete verification.
+
+Run this command in your terminal:
+
+gh issue create \\
   --repo ${VERIFY_REPO} \\
   --title "Verify: ${address?.slice(0, 10)}..." \\
   --label "verification" \\
-  --body '${JSON.stringify({...JSON.parse(signedData.message), signature: signedData.signature}, null, 2)}'`}
+  --body '${JSON.stringify({...JSON.parse(signedData.message), signature: signedData.signature}, null, 2)}'
+
+After running, paste the issue URL in the field below.`}
                     </pre>
                     <button
-                      onClick={() => copyToClipboard(`gh issue create --repo ${VERIFY_REPO} --title "Verify: ${address?.slice(0, 10)}..." --label "verification" --body '${JSON.stringify({...JSON.parse(signedData.message), signature: signedData.signature}, null, 2)}'`, 'ghCmd')}
+                      onClick={() => copyToClipboard(`Oracle Identity Verification
+
+This command posts a signed verification to GitHub.
+The signature proves wallet ownership. The issue author proves GitHub identity.
+After posting, paste the issue URL below to complete verification.
+
+Run this command in your terminal:
+
+gh issue create \\
+  --repo ${VERIFY_REPO} \\
+  --title "Verify: ${address?.slice(0, 10)}..." \\
+  --label "verification" \\
+  --body '${JSON.stringify({...JSON.parse(signedData.message), signature: signedData.signature}, null, 2)}'
+
+After running, paste the issue URL in the field below.`, 'ghCmd')}
                       className="absolute right-2 top-2 rounded bg-slate-700 p-1.5 text-slate-400 hover:bg-slate-600 hover:text-slate-200 cursor-pointer transition-colors"
                     >
                       {copied === 'ghCmd' ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
