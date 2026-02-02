@@ -108,6 +108,34 @@ func BindRoutes(app core.App) {
 			return e.JSON(http.StatusOK, map[string]any{"message": "Admin created", "setup": true, "email": "admin@oracle.family"})
 		})
 
+		// TEMP: Force recreate admin
+		se.Router.POST("/api/_recreate-admin", func(e *core.RequestEvent) error {
+			// Delete all existing superusers
+			records, _ := e.App.FindAllRecords("_superusers")
+			for _, r := range records {
+				e.App.Delete(r)
+			}
+
+			// Create new admin
+			superusers, err := e.App.FindCollectionByNameOrId("_superusers")
+			if err != nil {
+				return e.BadRequestError("Superusers collection not found", err)
+			}
+
+			admin := core.NewRecord(superusers)
+			admin.SetEmail("admin@oracle.family")
+			admin.SetPassword("oraclenet-admin-2026")
+			if err := e.App.Save(admin); err != nil {
+				return e.BadRequestError("Failed to create admin: "+err.Error(), err)
+			}
+
+			return e.JSON(http.StatusOK, map[string]any{
+				"message":  "Admin recreated",
+				"email":    "admin@oracle.family",
+				"password": "oraclenet-admin-2026",
+			})
+		})
+
 		se.Router.GET("/api/oracles/me", func(e *core.RequestEvent) error {
 			if e.Auth == nil {
 				return e.UnauthorizedError("Not authenticated", nil)
