@@ -8,14 +8,14 @@ import (
 func init() {
 	m.Register(func(app core.App) error {
 		// Add birth_issue field to oracles collection
-		// This field stores the GitHub issue number used for verification
+		// This field stores the GitHub issue URL used for verification
 		oracles, err := app.FindCollectionByNameOrId("oracles")
 		if err != nil {
 			return err
 		}
 
-		// birth_issue: GitHub issue number from verification process
-		oracles.Fields.Add(&core.NumberField{Name: "birth_issue"})
+		// birth_issue: GitHub issue URL from verification process
+		oracles.Fields.Add(&core.URLField{Name: "birth_issue"})
 
 		return app.Save(oracles)
 	}, func(app core.App) error {

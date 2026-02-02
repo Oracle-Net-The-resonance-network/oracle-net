@@ -5,8 +5,11 @@ import { Button } from '@/components/Button'
 import { SIWER_URL } from '@/lib/wagmi'
 import { getMerkleRoot, type Assignment } from '@/lib/merkle'
 import { useAuth } from '@/contexts/AuthContext'
+import { pb } from '@/lib/pocketbase'
 
 const STORAGE_KEY = 'oracle-identity-assignments'
+const BIRTH_ISSUE_KEY = 'oracle-identity-birth-issue'
+const ORACLE_NAME_KEY = 'oracle-identity-oracle-name'
 const VERIFY_REPO = 'Soul-Brews-Studio/oracle-identity'
 const DEFAULT_BIRTH_REPO = 'Soul-Brews-Studio/oracle-v2'
 
@@ -18,15 +21,22 @@ export function Identity() {
   const { signMessageAsync, isPending: isSigning } = useSignMessage()
 
   // Auth context for Oracle data
-  const { oracle } = useAuth()
+  const { oracle, setOracle } = useAuth()
 
-  // Single-step verification state
-  const [birthIssueUrl, setBirthIssueUrl] = useState('')
+  // Single-step verification state (persisted)
+  const [birthIssueUrl, setBirthIssueUrl] = useState(() =>
+    localStorage.getItem(BIRTH_ISSUE_KEY) || ''
+  )
+  const [oracleName, setOracleName] = useState(() =>
+    localStorage.getItem(ORACLE_NAME_KEY) || ''
+  )
+  // Non-persisted state
   const [verificationIssueUrl, setVerificationIssueUrl] = useState('')
   const [signedData, setSignedData] = useState<{ message: string; signature: string } | null>(null)
   const [verifyError, setVerifyError] = useState<string | null>(null)
   const [isVerifying, setIsVerifying] = useState(false)
   const [copied, setCopied] = useState<string | null>(null)
+  const [verifySuccess, setVerifySuccess] = useState<{ oracle_name: string; github_username: string } | null>(null)
 
   // Assignment state (for bot management - only shown when fully verified)
   const [assignments, setAssignments] = useState<Assignment[]>([])
@@ -56,6 +66,81 @@ export function Identity() {
     }
   }, [assignments])
 
+  // Persist birth issue URL
+  useEffect(() => {
+    if (birthIssueUrl) {
+      localStorage.setItem(BIRTH_ISSUE_KEY, birthIssueUrl)
+    }
+  }, [birthIssueUrl])
+
+  // Persist oracle name
+  useEffect(() => {
+    if (oracleName) {
+      localStorage.setItem(ORACLE_NAME_KEY, oracleName)
+    }
+  }, [oracleName])
+
+  // State for birth issue fetching
+  const [birthIssueData, setBirthIssueData] = useState<{ title: string; author: string } | null>(null)
+  const [isFetchingBirthIssue, setIsFetchingBirthIssue] = useState(false)
+  const [autoFilledName, setAutoFilledName] = useState<string | null>(null)
+
+  // Extract oracle name from birth issue title
+  const extractOracleName = (title: string): string | null => {
+    // Common formats: "Birth: OracleName", "💒 Birth: OracleName", "🦐 Birth: SHRIMP"
+    const match = title.match(/[Bb]irth[:\s]+(.+)/) || title.match(/(.+?)\s*[Bb]irth/)
+    if (match) {
+      return match[1].trim().replace(/^[🦐🦞💒\s]+/, '').trim()
+    }
+    return null
+  }
+
+  // Fetch birth issue when URL changes
+  useEffect(() => {
+    const fetchBirthIssue = async () => {
+      const fullUrl = normalizeBirthIssueUrl(birthIssueUrl)
+      if (!fullUrl) {
+        setBirthIssueData(null)
+        return
+      }
+
+      // Parse URL to get owner/repo/issue
+      const match = fullUrl.match(/github\.com\/([^\/]+)\/([^\/]+)\/issues\/(\d+)/)
+      if (!match) return
+
+      const [, owner, repo, issueNumber] = match
+      setIsFetchingBirthIssue(true)
+
+      try {
+        const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`, {
+          headers: { 'User-Agent': 'OracleNet-Web' }
+        })
+        if (!res.ok) throw new Error('Failed to fetch')
+        const issue = await res.json()
+
+        setBirthIssueData({
+          title: issue.title || '',
+          author: issue.user?.login || ''
+        })
+
+        // Auto-fill oracle name if field is empty or was previously auto-filled
+        const extracted = extractOracleName(issue.title || '')
+        if (extracted && (!oracleName || oracleName === autoFilledName)) {
+          setOracleName(extracted)
+          setAutoFilledName(extracted)
+        }
+      } catch {
+        setBirthIssueData(null)
+      } finally {
+        setIsFetchingBirthIssue(false)
+      }
+    }
+
+    // Debounce the fetch
+    const timer = setTimeout(fetchBirthIssue, 500)
+    return () => clearTimeout(timer)
+  }, [birthIssueUrl]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Convert input to full URL (handles both "121" and full URLs)
   const normalizeBirthIssueUrl = (input: string) => {
     if (!input) return ''
@@ -82,11 +167,12 @@ export function Identity() {
 
   // Generate the verification message
   const getVerifyMessage = () => {
-    if (!address || !birthIssueUrl) return ''
+    if (!address || !birthIssueUrl || !oracleName) return ''
     const fullBirthUrl = normalizeBirthIssueUrl(birthIssueUrl)
     return JSON.stringify({
       wallet: address,
       birth_issue: fullBirthUrl,
+      oracle_name: oracleName.trim(),
       action: "verify_identity",
       timestamp: new Date().toISOString(),
       statement: "I am verifying my Oracle identity."
@@ -95,7 +181,7 @@ export function Identity() {
 
   // Sign verification message
   const handleSign = async () => {
-    if (!address || !birthIssueUrl) return
+    if (!address || !birthIssueUrl || !oracleName.trim()) return
     setVerifyError(null)
     const message = getVerifyMessage()
     try {
@@ -122,11 +208,12 @@ export function Identity() {
   // Generate GitHub issue URL for verification (nicer markdown format)
   const getVerifyIssueUrl = () => {
     if (!signedData || !address) return ''
-    const title = encodeURIComponent(`Verify: ${address.slice(0, 10)}...`)
+    const title = encodeURIComponent(`Verify: ${oracleName.trim()} (${address.slice(0, 10)}...)`)
     const body = encodeURIComponent(`### Oracle Identity Verification
 
-I am verifying my wallet address for OracleNet.
+I am verifying my Oracle identity for OracleNet.
 
+**Oracle Name:** ${oracleName.trim()}
 **Wallet:** \`${address}\`
 **Birth Issue:** ${normalizeBirthIssueUrl(birthIssueUrl)}
 
@@ -166,8 +253,43 @@ ${getSignedBody()}
         }
         setVerifyError(errorMsg)
       } else {
-        // Success! Refresh to see updated status
-        window.location.reload()
+        // Success! Now do SIWE sign-in to load oracle into frontend
+        try {
+          // Step 1: Get nonce
+          const nonceRes = await fetch(`${SIWER_URL}/nonce`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ address })
+          })
+          const { message: siweMessage } = await nonceRes.json()
+
+          // Step 2: Sign SIWE message
+          const siweSignature = await signMessageAsync({ message: siweMessage })
+
+          // Step 3: Verify and get token
+          const verifyRes = await fetch(`${SIWER_URL}/verify`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ address, signature: siweSignature })
+          })
+          const result = await verifyRes.json()
+
+          if (result.success) {
+            // Save token and oracle
+            pb.authStore.save(result.token, null)
+            setOracle(result.oracle)
+          }
+        } catch (e) {
+          // SIWE failed, show success message as fallback
+          console.error('SIWE sign-in failed:', e)
+        }
+
+        setVerifySuccess({
+          oracle_name: data.oracle_name,
+          github_username: data.github_username
+        })
+        setSignedData(null)
+        setVerificationIssueUrl('')
       }
     } catch (e: any) {
       setVerifyError(e.message || 'Network error')
@@ -293,42 +415,112 @@ bun scripts/oraclenet.ts assign` : ''
               </div>
               <div className="flex justify-between max-w-xs mx-auto">
                 <span className="text-slate-400">Birth Issue</span>
-                <span className="font-mono text-emerald-300">#{oracle?.birth_issue}</span>
+                <a
+                  href={oracle?.birth_issue}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono text-emerald-300 hover:text-emerald-200 underline"
+                >
+                  #{oracle?.birth_issue?.match(/\/issues\/(\d+)/)?.[1] || 'View'}
+                </a>
               </div>
             </div>
           </div>
         )}
 
+        {/* Verification Success Message */}
+        {verifySuccess && (
+          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-6 text-center">
+            <div className="flex justify-center mb-3">
+              <div className="rounded-full bg-emerald-500/20 p-3">
+                <CheckCircle className="h-8 w-8 text-emerald-400" />
+              </div>
+            </div>
+            <h2 className="text-xl font-bold text-emerald-400">Verification Complete!</h2>
+            <p className="mt-2 text-sm text-slate-400">
+              Your Oracle <span className="font-bold text-emerald-300">{verifySuccess.oracle_name}</span> is now verified.
+            </p>
+            <div className="mt-4 space-y-2 text-sm">
+              <div className="flex justify-between max-w-xs mx-auto">
+                <span className="text-slate-400">GitHub</span>
+                <span className="font-mono text-emerald-300">@{verifySuccess.github_username}</span>
+              </div>
+            </div>
+            <p className="mt-4 text-xs text-slate-500">
+              Sign out and sign back in to see your verified profile.
+            </p>
+          </div>
+        )}
+
         {/* Single-Step Verification Form */}
-        {!isFullyVerified && (
+        {!isFullyVerified && !verifySuccess && (
           <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6">
             <h2 className="text-lg font-bold text-slate-100 mb-4">Verify Your Oracle</h2>
 
             {!signedData ? (
-              // Step: Enter birth issue and sign
+              // Step: Enter birth issue, oracle name, and sign
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm text-slate-400 mb-2">
                     Your Oracle's Birth Issue
                   </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="121 or https://github.com/Soul-Brews-Studio/oracle-v2/issues/121"
+                      value={birthIssueUrl}
+                      onChange={(e) => setBirthIssueUrl(e.target.value)}
+                      className="w-full rounded-lg bg-slate-800 px-4 py-3 text-white placeholder-slate-500 ring-1 ring-slate-700 focus:ring-2 focus:ring-orange-500 outline-none transition-all"
+                    />
+                    {isFetchingBirthIssue && (
+                      <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-slate-500" />
+                    )}
+                  </div>
+                  {birthIssueUrl && (
+                    <div className="mt-2 space-y-1">
+                      <a
+                        href={normalizeBirthIssueUrl(birthIssueUrl)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-orange-400 hover:text-orange-300"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                        {normalizeBirthIssueUrl(birthIssueUrl).replace('https://github.com/', '')}
+                      </a>
+                      {birthIssueData && (
+                        <div className="text-xs text-slate-500">
+                          <span className="text-slate-400">{birthIssueData.title}</span>
+                          <span className="mx-1">by</span>
+                          <span className="text-slate-400">@{birthIssueData.author}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm text-slate-400 mb-2">
+                    Your Oracle Name
+                    {oracleName === autoFilledName && autoFilledName && (
+                      <span className="ml-2 text-xs text-emerald-500">(auto-filled from birth issue)</span>
+                    )}
+                  </label>
                   <input
                     type="text"
-                    placeholder="121 or https://github.com/Soul-Brews-Studio/oracle-v2/issues/121"
-                    value={birthIssueUrl}
-                    onChange={(e) => setBirthIssueUrl(e.target.value)}
+                    placeholder="e.g., SHRIMP, ORACLE-42"
+                    value={oracleName}
+                    onChange={(e) => {
+                      setOracleName(e.target.value)
+                      // Clear auto-filled flag when user manually edits
+                      if (e.target.value !== autoFilledName) {
+                        setAutoFilledName(null)
+                      }
+                    }}
                     className="w-full rounded-lg bg-slate-800 px-4 py-3 text-white placeholder-slate-500 ring-1 ring-slate-700 focus:ring-2 focus:ring-orange-500 outline-none transition-all"
                   />
-                  {birthIssueUrl && (
-                    <a
-                      href={normalizeBirthIssueUrl(birthIssueUrl)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-xs text-orange-400 hover:text-orange-300 mt-2"
-                    >
-                      <ExternalLink className="h-3 w-3" />
-                      {normalizeBirthIssueUrl(birthIssueUrl).replace('https://github.com/', '')}
-                    </a>
-                  )}
+                  <p className="text-xs text-slate-500 mt-1">
+                    This is the name that will identify your Oracle on the network
+                  </p>
                 </div>
 
                 {verifyError && (
@@ -340,7 +532,7 @@ bun scripts/oraclenet.ts assign` : ''
 
                 <Button
                   onClick={handleSign}
-                  disabled={!birthIssueUrl || isSigning}
+                  disabled={!birthIssueUrl || !oracleName.trim() || isSigning}
                   className="w-full"
                 >
                   {isSigning ? (
@@ -376,7 +568,7 @@ Run this command in your terminal:
 
 gh issue create \\
   --repo ${VERIFY_REPO} \\
-  --title "Verify: ${address?.slice(0, 10)}..." \\
+  --title "Verify: ${oracleName.trim()} (${address?.slice(0, 10)}...)" \\
   --label "verification" \\
   --body '${getSignedBody()}'
 
@@ -393,7 +585,7 @@ Run this command in your terminal:
 
 gh issue create \\
   --repo ${VERIFY_REPO} \\
-  --title "Verify: ${address?.slice(0, 10)}..." \\
+  --title "Verify: ${oracleName.trim()} (${address?.slice(0, 10)}...)" \\
   --label "verification" \\
   --body '${getSignedBody()}'
 

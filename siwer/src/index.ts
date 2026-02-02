@@ -300,7 +300,12 @@ app.get('/check-verified', async (c) => {
 })
 
 // Types
-type Assignment = { bot: string; oracle: string; issue: number }
+type Assignment = {
+  bot: string
+  oracle: string
+  issue: number
+  github_repo?: string  // e.g., "owner/repo" - not part of Merkle encoding, just metadata for URL
+}
 
 // Leaf encoding for OZ Merkle tree
 const LEAF_ENCODING: string[] = ['address', 'string', 'uint256']
@@ -529,7 +534,12 @@ app.post('/claim', async (c) => {
     }, 400)
   }
 
-  // 6. Create or update Oracle in PocketBase
+  // 6. Construct birth issue URL from repo + issue number
+  const birthIssueUrl = leaf.github_repo
+    ? `https://github.com/${leaf.github_repo}/issues/${leaf.issue}`
+    : `${leaf.issue}` // fallback to just number if no repo (legacy)
+
+  // 7. Create or update Oracle in PocketBase
   const pb = new PocketBase(c.env.POCKETBASE_URL)
 
   let oracle: any
@@ -545,12 +555,12 @@ app.post('/claim', async (c) => {
     await pb.collection('oracles').update(oracle.id, {
       name: leaf.oracle,
       github_username: root.github_username,
-      birth_issue: leaf.issue,
+      birth_issue: birthIssueUrl,
       approved: true
     })
     oracle.name = leaf.oracle
     oracle.github_username = root.github_username
-    oracle.birth_issue = leaf.issue
+    oracle.birth_issue = birthIssueUrl
     oracle.approved = true
   } catch {
     // Create new oracle
@@ -562,7 +572,7 @@ app.post('/claim', async (c) => {
         email: walletEmail,
         wallet_address: botWallet.toLowerCase(),
         github_username: root.github_username,
-        birth_issue: leaf.issue,
+        birth_issue: birthIssueUrl,
         password: botWallet.toLowerCase(),
         passwordConfirm: botWallet.toLowerCase(),
         karma: 0,
@@ -950,8 +960,8 @@ app.post('/verify-birth-issue', async (c) => {
     }, 400)
   }
 
-  // 5. Extract birth issue number
-  const birthIssueNumber = parseInt(issueNumber)
+  // 5. Use full birth issue URL (not just the number)
+  const birthIssueUrl = issueUrl
 
   // 6. Update Oracle in PocketBase with birth_issue
   const pb = new PocketBase(c.env.POCKETBASE_URL)
@@ -971,7 +981,7 @@ app.post('/verify-birth-issue', async (c) => {
     isFullyVerified = hasGithubUsername  // Both birth_issue (just verified) and github_username present
 
     await pb.collection('oracles').update(oracle.id, {
-      birth_issue: birthIssueNumber,
+      birth_issue: birthIssueUrl,
       ...(isFullyVerified ? { approved: true } : {})
     })
     oracleUpdated = true
@@ -981,7 +991,7 @@ app.post('/verify-birth-issue', async (c) => {
 
   return c.json({
     success: true,
-    birth_issue: birthIssueNumber,
+    birth_issue: birthIssueUrl,
     wallet: wallet.toLowerCase(),
     oracle_updated: oracleUpdated,
     fully_verified: isFullyVerified
@@ -1106,17 +1116,19 @@ app.post('/verify-identity', async (c) => {
   // 2. Verification issue author proves GitHub ownership
   // 3. Birth issue author == verification author links to Oracle
 
-  // Extract oracle name from birth issue title
-  // Common formats: "Birth: OracleName", "💒 Birth: OracleName", "OracleName Birth"
-  const birthTitle = birthIssue.title || ''
+  // Extract oracle name from the signed message (user provides it)
   let oracleName = githubUsername // fallback to GitHub username
-
-  const birthMatch2 = birthTitle.match(/[Bb]irth[:\s]+(.+)/) || birthTitle.match(/(.+?)\s*[Bb]irth/)
-  if (birthMatch2) {
-    oracleName = birthMatch2[1].trim().replace(/^[🦐🦞\s]+/, '').trim()
+  try {
+    const messageData = JSON.parse(message)
+    if (messageData.oracle_name && typeof messageData.oracle_name === 'string' && messageData.oracle_name.trim()) {
+      oracleName = messageData.oracle_name.trim()
+    }
+  } catch {
+    // If message isn't JSON, use GitHub username as fallback
   }
 
-  const birthIssueNum = parseInt(birthIssueNumber)
+  // Use full URL instead of just the number
+  const birthIssueUrlFull = birthIssueUrl
 
   // 4. Store GitHub verification (for legacy compatibility)
   await c.env.NONCES.put(`verified:${wallet.toLowerCase()}`, JSON.stringify({
@@ -1137,23 +1149,20 @@ app.post('/verify-identity', async (c) => {
       `wallet_address = "${wallet.toLowerCase()}"`
     )
 
-    // Update with all values and set approved
-    const isGenericName = oracle.name?.startsWith('Oracle-')
-    const finalName = isGenericName ? oracleName : oracle.name
-
+    // Always use user-provided oracle name - user controls their identity
     await pb.collection('oracles').update(oracle.id, {
-      name: finalName,
+      name: oracleName,
       github_username: githubUsername,
-      birth_issue: birthIssueNum,
+      birth_issue: birthIssueUrlFull,
       approved: true
     })
 
     return c.json({
       success: true,
       github_username: githubUsername,
-      birth_issue: birthIssueNum,
+      birth_issue: birthIssueUrlFull,
       wallet: wallet.toLowerCase(),
-      oracle_name: finalName,
+      oracle_name: oracleName,
       fully_verified: true,
       created: false
     })
@@ -1166,7 +1175,7 @@ app.post('/verify-identity', async (c) => {
         email: walletEmail,
         wallet_address: wallet.toLowerCase(),
         github_username: githubUsername,
-        birth_issue: birthIssueNum,
+        birth_issue: birthIssueUrlFull,
         password: wallet.toLowerCase(),
         passwordConfirm: wallet.toLowerCase(),
         karma: 0,
@@ -1177,7 +1186,7 @@ app.post('/verify-identity', async (c) => {
       return c.json({
         success: true,
         github_username: githubUsername,
-        birth_issue: birthIssueNum,
+        birth_issue: birthIssueUrlFull,
         wallet: wallet.toLowerCase(),
         oracle_name: oracleName,
         fully_verified: true,
@@ -1202,7 +1211,7 @@ app.post('/auth-request', async (c) => {
   const { botWallet, oracleName, birthIssue } = await c.req.json<{
     botWallet: `0x${string}`
     oracleName: string
-    birthIssue: number
+    birthIssue: string  // GitHub issue URL
   }>()
 
   if (!botWallet || !oracleName || !birthIssue) {
@@ -1333,7 +1342,7 @@ app.post('/claim-delegated', async (c) => {
     human: string
     bot: string
     oracle: string
-    issue: number
+    issue: string  // GitHub issue URL
     reqId: string
     github: string
     ts: string

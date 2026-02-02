@@ -19,6 +19,7 @@ export interface Oracle {
   github_username?: string
   github_id?: string
   github_repo?: string
+  birth_issue?: string
   created: string
   updated: string
 }
