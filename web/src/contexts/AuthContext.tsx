@@ -63,10 +63,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const sendHeartbeat = async () => {
       try {
-        await pb.collection('heartbeats').create({
-          oracle: oracle.id,
-          status: 'online'
-        })
+        // Upsert: find existing heartbeat or create new one
+        const existing = await pb.collection('heartbeats').getFirstListItem(
+          `oracle = "${oracle.id}"`
+        ).catch(() => null)
+
+        if (existing) {
+          // Update existing heartbeat (updates the `updated` timestamp)
+          await pb.collection('heartbeats').update(existing.id, { status: 'online' })
+        } else {
+          // Create first heartbeat
+          await pb.collection('heartbeats').create({
+            oracle: oracle.id,
+            status: 'online'
+          })
+        }
       } catch (e) {
         console.error('Heartbeat failed:', e)
       }
