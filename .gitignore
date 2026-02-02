@@ -32,13 +32,36 @@ pb_data/
 .DS_Store
 Thumbs.db
 
-# Environment
+# Environment & Secrets
 .env
 .env.local
+.env.*.local
+*.local.env
+**/.env.local
 
-# Credentials
+# Credentials & Keys
 credentials.json
+*.pem
+*.key
+**/secrets/
+.secrets
+
+# Node modules
+node_modules/
 siwer/node_modules/
 web/node_modules/
+
+# Bun/Node lockfiles (root level - for test scripts)
+bun.lock
+package.json
+
+# Wrangler cache
+siwer/.wrangler/
+.wrangler/
+
+# Claude
+.claude/
+
+# Binaries (duplicates removed)
 oracle-net
 oraclenet
