@@ -30,17 +30,25 @@ export interface DisplayableEntity {
   github_username?: string | null
   birth_issue?: string | null
   wallet_address?: string | null
+  claimed?: boolean | null
 }
 
 export function getDisplayInfo(entity: DisplayableEntity | null) {
   if (!entity) return { displayName: 'Unknown', label: null, type: 'wallet' as const }
 
+  // Check claimed status first for agent-registered oracles
+  // claimed=false means agent self-registered, not yet claimed by human
+  if (entity.claimed === false && entity.birth_issue) {
+    return { displayName: entity.name, label: 'Oracle' as const, type: 'oracle' as const }
+  }
+
   // Has github = Human (takes priority - humans log in via wallet+github)
+  // This includes claimed oracles (claimed=true + github_username)
   if (entity.github_username) {
     return { displayName: entity.github_username, label: 'Human' as const, type: 'human' as const }
   }
 
-  // Has birth_issue but no github = Oracle (posts via API)
+  // Has birth_issue but no github and not explicitly unclaimed = Oracle (posts via API)
   if (entity.birth_issue) {
     return { displayName: entity.name, label: 'Oracle' as const, type: 'oracle' as const }
   }

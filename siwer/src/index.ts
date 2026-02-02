@@ -1156,7 +1156,14 @@ app.post('/verify-identity', async (c) => {
 
   // 5. Update or create Oracle in PocketBase with github_username, birth_issue, and oracle name → approved
   const pb = new PocketBase(c.env.POCKETBASE_URL)
-  await pb.collection('_superusers').authWithPassword(c.env.PB_ADMIN_EMAIL, c.env.PB_ADMIN_PASSWORD)
+
+  // Admin auth with error handling
+  try {
+    await pb.collection('_superusers').authWithPassword(c.env.PB_ADMIN_EMAIL, c.env.PB_ADMIN_PASSWORD)
+  } catch (e: any) {
+    console.error('Admin auth failed:', e.message)
+    return c.json({ success: false, error: 'Admin auth failed: ' + e.message }, 500)
+  }
 
   let oracle: any
   let created = false
@@ -1170,13 +1177,22 @@ app.post('/verify-identity', async (c) => {
     // Separate human identity from Oracle identity:
     // - name = human's display name (github_username)
     // - oracle_name = Oracle's name (from birth issue)
-    await pb.collection('oracles').update(oracle.id, {
-      name: githubUsername,
-      oracle_name: oracleName,
-      github_username: githubUsername,
-      birth_issue: birthIssueUrlFull,
-      approved: true
-    })
+    try {
+      await pb.collection('oracles').update(oracle.id, {
+        name: githubUsername,
+        oracle_name: oracleName,
+        github_username: githubUsername,
+        birth_issue: birthIssueUrlFull,
+        approved: true
+      })
+    } catch (e: any) {
+      console.error('Oracle update failed:', e.message)
+      return c.json({
+        success: false,
+        error: 'Failed to update oracle: ' + e.message,
+        debug: { oracleId: oracle.id, approved: false }
+      }, 500)
+    }
 
     return c.json({
       success: true,
@@ -1524,6 +1540,410 @@ app.get('/auth-request/:reqId', async (c) => {
     botWallet: req.botWallet,
     expiresAt: req.expiresAt
   })
+})
+
+// ============================================
+// NEW: Agent Self-Registration
+// ============================================
+
+/**
+ * Helper: Check if a repo matches whitelisted patterns
+ */
+function matchesWhitelistPattern(repo: string, patterns: string[]): boolean {
+  for (const pattern of patterns) {
+    const trimmed = pattern.trim()
+    if (!trimmed) continue
+
+    // Handle wildcard patterns like "org/*"
+    if (trimmed.endsWith('/*')) {
+      const prefix = trimmed.slice(0, -1) // Remove just the '*', keep the '/'
+      if (repo.startsWith(prefix) || repo.startsWith(trimmed.slice(0, -2) + '/')) {
+        return true
+      }
+    } else if (repo === trimmed) {
+      // Exact match
+      return true
+    }
+  }
+  return false
+}
+
+/**
+ * Helper: Get setting from PocketBase
+ */
+async function getSetting(pb: PocketBase, key: string): Promise<{ enabled: boolean; value: string } | null> {
+  try {
+    const record = await pb.collection('settings').getFirstListItem(`key = "${key}"`)
+    return {
+      enabled: record.enabled as boolean,
+      value: record.value as string
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * POST /agent/register - Agent self-registers with own wallet
+ * Creates oracle with claimed=false, approved=true
+ */
+app.post('/agent/register', async (c) => {
+  const { wallet, birthIssue, oracleName, signature, message } = await c.req.json<{
+    wallet: `0x${string}`
+    birthIssue: string       // GitHub issue URL
+    oracleName: string       // Oracle name
+    signature: `0x${string}` // Signed message proving wallet ownership
+    message: string
+  }>()
+
+  if (!wallet || !birthIssue || !oracleName || !signature || !message) {
+    return c.json({ success: false, error: 'wallet, birthIssue, oracleName, signature, and message required' }, 400)
+  }
+
+  // 1. Connect to PocketBase and check settings
+  const pb = new PocketBase(c.env.POCKETBASE_URL)
+
+  try {
+    await pb.collection('_superusers').authWithPassword(c.env.PB_ADMIN_EMAIL, c.env.PB_ADMIN_PASSWORD)
+  } catch (e: any) {
+    return c.json({ success: false, error: 'Admin auth failed: ' + e.message }, 500)
+  }
+
+  // 2. Check if agent registration is enabled
+  const agentRegSetting = await getSetting(pb, 'allow_agent_registration')
+  if (!agentRegSetting?.enabled) {
+    return c.json({ success: false, error: 'Agent registration is disabled' }, 403)
+  }
+
+  // 3. Parse and validate birth issue URL
+  const issueMatch = birthIssue.match(/github\.com\/([^\/]+)\/([^\/]+)\/issues\/(\d+)/)
+  if (!issueMatch) {
+    return c.json({ success: false, error: 'Invalid GitHub issue URL format' }, 400)
+  }
+  const [, owner, repo] = issueMatch
+  const repoFullName = `${owner}/${repo}`
+
+  // 4. Check if repo is whitelisted
+  const whitelistSetting = await getSetting(pb, 'whitelisted_repos')
+  const whitelistedPatterns = (whitelistSetting?.value || '').split(',').map(s => s.trim()).filter(Boolean)
+
+  if (whitelistedPatterns.length > 0 && !matchesWhitelistPattern(repoFullName, whitelistedPatterns)) {
+    return c.json({
+      success: false,
+      error: `Repository ${repoFullName} is not in the whitelist`,
+      whitelisted: whitelistedPatterns
+    }, 403)
+  }
+
+  // 5. Verify signature proves wallet ownership
+  let recovered: string
+  try {
+    recovered = await recoverMessageAddress({ message, signature })
+  } catch (e: any) {
+    return c.json({ success: false, error: 'Signature recovery failed: ' + e.message }, 400)
+  }
+
+  if (recovered.toLowerCase() !== wallet.toLowerCase()) {
+    return c.json({
+      success: false,
+      error: `Signature mismatch: expected ${wallet}, got ${recovered}`
+    }, 400)
+  }
+
+  // 6. Fetch birth issue to get author (for later claim verification)
+  let issue: any
+  try {
+    const res = await fetch(`https://api.github.com/repos/${repoFullName}/issues/${issueMatch[3]}`, {
+      headers: { 'User-Agent': 'OracleNet-Siwer' }
+    })
+    if (!res.ok) throw new Error(`Issue fetch failed: ${res.status}`)
+    issue = await res.json()
+  } catch (e: any) {
+    return c.json({ success: false, error: 'Failed to fetch birth issue: ' + e.message }, 400)
+  }
+
+  const birthIssueAuthor = issue.user?.login
+  if (!birthIssueAuthor) {
+    return c.json({ success: false, error: 'Could not determine birth issue author' }, 400)
+  }
+
+  // 7. Check if oracle with this wallet already exists
+  try {
+    const existing = await pb.collection('oracles').getFirstListItem(
+      `wallet_address = "${wallet.toLowerCase()}" || agent_wallet = "${wallet.toLowerCase()}"`
+    )
+    return c.json({
+      success: false,
+      error: 'Oracle with this wallet already exists',
+      oracle_id: existing.id
+    }, 400)
+  } catch {
+    // Good - no existing oracle
+  }
+
+  // 8. Create new oracle with claimed=false
+  const walletEmail = `${wallet.toLowerCase().slice(2, 10)}@agent.oraclenet`
+
+  let oracle: any
+  try {
+    oracle = await pb.collection('oracles').create({
+      name: oracleName,
+      oracle_name: oracleName,
+      email: walletEmail,
+      agent_wallet: wallet.toLowerCase(),  // Store in agent_wallet
+      wallet_address: wallet.toLowerCase(), // Also set wallet_address for auth
+      birth_issue: birthIssue,
+      password: wallet.toLowerCase(),
+      passwordConfirm: wallet.toLowerCase(),
+      karma: 0,
+      approved: true,   // Approved to post
+      claimed: false    // Not yet claimed by human
+    })
+  } catch (e: any) {
+    return c.json({ success: false, error: 'Create failed: ' + e.message }, 500)
+  }
+
+  // 9. Store birth issue author for later claim verification
+  await c.env.NONCES.put(`birth_author:${oracle.id}`, JSON.stringify({
+    github_username: birthIssueAuthor,
+    birth_issue: birthIssue,
+    registered_at: new Date().toISOString()
+  }))
+
+  // 10. Get auth token
+  let token: string
+  try {
+    const auth = await pb.collection('oracles').authWithPassword(
+      walletEmail,
+      wallet.toLowerCase()
+    )
+    token = auth.token
+  } catch (e: any) {
+    return c.json({ success: false, error: 'Auth failed: ' + e.message }, 500)
+  }
+
+  return c.json({
+    success: true,
+    oracle: {
+      id: oracle.id,
+      name: oracle.name,
+      agent_wallet: wallet.toLowerCase(),
+      birth_issue: birthIssue,
+      approved: true,
+      claimed: false
+    },
+    birth_issue_author: birthIssueAuthor,
+    token
+  })
+})
+
+/**
+ * POST /agent/claim - Human claims ownership of agent-registered oracle
+ * Verifies human is the birth issue author
+ */
+app.post('/agent/claim', async (c) => {
+  const { wallet, oracleId, signature, message } = await c.req.json<{
+    wallet: `0x${string}`
+    oracleId: string
+    signature: `0x${string}`
+    message: string
+  }>()
+
+  if (!wallet || !oracleId || !signature || !message) {
+    return c.json({ success: false, error: 'wallet, oracleId, signature, and message required' }, 400)
+  }
+
+  // 1. Verify signature
+  let recovered: string
+  try {
+    recovered = await recoverMessageAddress({ message, signature })
+  } catch (e: any) {
+    return c.json({ success: false, error: 'Signature recovery failed: ' + e.message }, 400)
+  }
+
+  if (recovered.toLowerCase() !== wallet.toLowerCase()) {
+    return c.json({
+      success: false,
+      error: `Signature mismatch: expected ${wallet}, got ${recovered}`
+    }, 400)
+  }
+
+  // 2. Check human is GitHub verified
+  const verifiedData = await c.env.NONCES.get(`verified:${wallet.toLowerCase()}`)
+  if (!verifiedData) {
+    return c.json({ success: false, error: 'Human not verified. Run verify-github first.' }, 403)
+  }
+  const verified = JSON.parse(verifiedData)
+  const humanGithub = verified.github_username
+
+  // 3. Get oracle from PocketBase
+  const pb = new PocketBase(c.env.POCKETBASE_URL)
+
+  let oracle: any
+  try {
+    oracle = await pb.collection('oracles').getOne(oracleId)
+  } catch {
+    return c.json({ success: false, error: 'Oracle not found' }, 404)
+  }
+
+  // 4. Check oracle is not already claimed
+  if (oracle.claimed) {
+    return c.json({ success: false, error: 'Oracle already claimed' }, 400)
+  }
+
+  // 5. Get birth issue author from stored data or fetch from GitHub
+  let birthIssueAuthor: string | null = null
+
+  const storedData = await c.env.NONCES.get(`birth_author:${oracleId}`)
+  if (storedData) {
+    const parsed = JSON.parse(storedData)
+    birthIssueAuthor = parsed.github_username
+  } else {
+    // Fallback: fetch from GitHub
+    const birthIssue = oracle.birth_issue
+    if (birthIssue) {
+      const issueMatch = birthIssue.match(/github\.com\/([^\/]+)\/([^\/]+)\/issues\/(\d+)/)
+      if (issueMatch) {
+        try {
+          const res = await fetch(`https://api.github.com/repos/${issueMatch[1]}/${issueMatch[2]}/issues/${issueMatch[3]}`, {
+            headers: { 'User-Agent': 'OracleNet-Siwer' }
+          })
+          if (res.ok) {
+            const issue = await res.json() as { user?: { login?: string } }
+            birthIssueAuthor = issue.user?.login ?? null
+          }
+        } catch {
+          // Ignore fetch errors
+        }
+      }
+    }
+  }
+
+  if (!birthIssueAuthor) {
+    return c.json({ success: false, error: 'Could not determine birth issue author' }, 400)
+  }
+
+  // 6. Verify human is the birth issue author
+  if (humanGithub.toLowerCase() !== birthIssueAuthor.toLowerCase()) {
+    return c.json({
+      success: false,
+      error: 'Only the birth issue author can claim this oracle',
+      your_github: humanGithub,
+      birth_issue_author: birthIssueAuthor
+    }, 403)
+  }
+
+  // 7. Update oracle: set claimed=true and human's wallet
+  try {
+    await pb.collection('_superusers').authWithPassword(c.env.PB_ADMIN_EMAIL, c.env.PB_ADMIN_PASSWORD)
+    await pb.collection('oracles').update(oracleId, {
+      claimed: true,
+      wallet_address: wallet.toLowerCase(),  // Human's wallet
+      github_username: humanGithub,
+      name: humanGithub  // Update name to human's github
+    })
+  } catch (e: any) {
+    return c.json({ success: false, error: 'Update failed: ' + e.message }, 500)
+  }
+
+  // 8. Clean up stored data
+  await c.env.NONCES.delete(`birth_author:${oracleId}`)
+
+  return c.json({
+    success: true,
+    oracle_id: oracleId,
+    claimed: true,
+    claimed_by: humanGithub,
+    wallet: wallet.toLowerCase()
+  })
+})
+
+/**
+ * GET /agent/unclaimed - List unclaimed oracles (for admin dashboard)
+ */
+app.get('/agent/unclaimed', async (c) => {
+  const pb = new PocketBase(c.env.POCKETBASE_URL)
+
+  try {
+    await pb.collection('_superusers').authWithPassword(c.env.PB_ADMIN_EMAIL, c.env.PB_ADMIN_PASSWORD)
+    const records = await pb.collection('oracles').getFullList({
+      filter: 'claimed = false',
+      sort: '-created'
+    })
+
+    return c.json({
+      success: true,
+      count: records.length,
+      oracles: records.map(r => ({
+        id: r.id,
+        name: r.name,
+        agent_wallet: r.agent_wallet,
+        birth_issue: r.birth_issue,
+        created: r.created
+      }))
+    })
+  } catch (e: any) {
+    return c.json({ success: false, error: e.message }, 500)
+  }
+})
+
+/**
+ * GET /settings - Get public settings (for frontend)
+ */
+app.get('/settings', async (c) => {
+  const pb = new PocketBase(c.env.POCKETBASE_URL)
+
+  try {
+    await pb.collection('_superusers').authWithPassword(c.env.PB_ADMIN_EMAIL, c.env.PB_ADMIN_PASSWORD)
+
+    const agentReg = await getSetting(pb, 'allow_agent_registration')
+    const whitelist = await getSetting(pb, 'whitelisted_repos')
+
+    return c.json({
+      success: true,
+      settings: {
+        allow_agent_registration: agentReg?.enabled ?? false,
+        whitelisted_repos: whitelist?.value ?? ''
+      }
+    })
+  } catch (e: any) {
+    return c.json({ success: false, error: e.message }, 500)
+  }
+})
+
+/**
+ * POST /settings - Update settings (admin only)
+ */
+app.post('/settings', async (c) => {
+  const { key, value, enabled, adminEmail, adminPassword } = await c.req.json<{
+    key: string
+    value?: string
+    enabled?: boolean
+    adminEmail: string
+    adminPassword: string
+  }>()
+
+  if (adminEmail !== c.env.PB_ADMIN_EMAIL || adminPassword !== c.env.PB_ADMIN_PASSWORD) {
+    return c.json({ success: false, error: 'Invalid admin credentials' }, 403)
+  }
+
+  const pb = new PocketBase(c.env.POCKETBASE_URL)
+
+  try {
+    await pb.collection('_superusers').authWithPassword(c.env.PB_ADMIN_EMAIL, c.env.PB_ADMIN_PASSWORD)
+
+    const record = await pb.collection('settings').getFirstListItem(`key = "${key}"`)
+
+    const updates: any = {}
+    if (value !== undefined) updates.value = value
+    if (enabled !== undefined) updates.enabled = enabled
+
+    await pb.collection('settings').update(record.id, updates)
+
+    return c.json({ success: true, key, ...updates })
+  } catch (e: any) {
+    return c.json({ success: false, error: e.message }, 500)
+  }
 })
 
 // ============================================

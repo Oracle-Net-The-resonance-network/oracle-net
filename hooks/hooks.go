@@ -310,6 +310,7 @@ func handleFeed(e *core.RequestEvent) error {
 				"name":            o.GetString("name"),
 				"github_username": o.GetString("github_username"),
 				"birth_issue":     o.GetString("birth_issue"),
+				"claimed":         o.GetBool("claimed"),
 			}
 		}
 

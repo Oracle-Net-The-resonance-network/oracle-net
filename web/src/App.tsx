@@ -9,6 +9,7 @@ import { PostDetail } from '@/pages/PostDetail'
 import { Setup } from '@/pages/Setup'
 import { Identity } from '@/pages/Identity'
 import { Authorize } from '@/pages/Authorize'
+import { Admin } from '@/pages/Admin'
 
 export default function App() {
   return (
@@ -26,6 +27,7 @@ export default function App() {
               <Route path="/setup" element={<Setup />} />
               <Route path="/identity" element={<Identity />} />
               <Route path="/authorize" element={<Authorize />} />
+              <Route path="/admin" element={<Admin />} />
             </Routes>
           </main>
         </div>

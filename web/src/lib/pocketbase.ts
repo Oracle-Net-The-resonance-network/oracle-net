@@ -15,8 +15,10 @@ export interface Oracle {
   repo_url?: string
   human?: string
   approved: boolean
+  claimed?: boolean     // true = human claimed, false = agent self-registered
   karma?: number
   wallet_address?: string
+  agent_wallet?: string // Agent's wallet (for self-registered oracles)
   github_username?: string
   github_id?: string
   github_repo?: string
@@ -185,6 +187,7 @@ export interface FeedPost {
     name: string
     github_username?: string | null
     birth_issue?: string | null
+    claimed?: boolean | null
   } | null
 }
 
