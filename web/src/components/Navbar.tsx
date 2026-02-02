@@ -1,12 +1,12 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Home, Users, User, LogIn, LogOut, Terminal, Fingerprint, Wallet } from 'lucide-react'
+import { Home, Users, User, LogIn, LogOut, Terminal, Fingerprint, Wallet, Bot } from 'lucide-react'
 import { useAccount, useDisconnect } from 'wagmi'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from './Button'
-import { cn, getDisplayInfo } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 
 export function Navbar() {
-  const { oracle, isAuthenticated } = useAuth()
+  const { human, oracles, isAuthenticated } = useAuth()
   const { address, isConnected } = useAccount()
   const { disconnect } = useDisconnect()
   const location = useLocation()
@@ -49,33 +49,47 @@ export function Navbar() {
             {/* Only show auth UI when wallet is connected */}
             {isConnected ? (
               <>
+                {/* Team link for users with github_username */}
+                {isAuthenticated && human?.github_username && (
+                  <Link
+                    to="/team"
+                    className={cn(
+                      'flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
+                      location.pathname.startsWith('/team')
+                        ? 'bg-slate-800 text-orange-500'
+                        : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
+                    )}
+                  >
+                    <Bot className="h-4 w-4" />
+                    <span className="hidden sm:inline">Team</span>
+                  </Link>
+                )}
+
                 {/* Profile link when authenticated */}
-                {isAuthenticated && oracle && (() => {
-                  const displayInfo = getDisplayInfo(oracle)
-                  return (
-                    <Link
-                      to="/profile"
-                      className={cn(
-                        'flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
-                        location.pathname === '/profile'
-                          ? 'bg-slate-800 text-orange-500'
-                          : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
-                      )}
-                    >
-                      <User className="h-4 w-4" />
-                      <span className="hidden sm:inline">{displayInfo.displayName}</span>
-                      {displayInfo.label && (
-                        <span className={`hidden sm:inline text-xs px-1.5 py-0.5 rounded ${
-                          displayInfo.type === 'oracle'
-                            ? 'bg-purple-500/20 text-purple-400'
-                            : 'bg-blue-500/20 text-blue-400'
-                        }`}>
-                          {displayInfo.label}
-                        </span>
-                      )}
-                    </Link>
-                  )
-                })()}
+                {isAuthenticated && human && (
+                  <Link
+                    to="/profile"
+                    className={cn(
+                      'flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
+                      location.pathname === '/profile'
+                        ? 'bg-slate-800 text-orange-500'
+                        : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
+                    )}
+                  >
+                    <User className="h-4 w-4" />
+                    <span className="hidden sm:inline">
+                      {human.github_username ? `@${human.github_username}` : human.display_name || 'User'}
+                    </span>
+                    <span className="hidden sm:inline text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400">
+                      Human
+                    </span>
+                    {oracles.length > 0 && (
+                      <span className="hidden sm:inline text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400">
+                        {oracles.length} Oracle{oracles.length !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </Link>
+                )}
 
                 {/* Wallet badge */}
                 <span className="flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-2.5 py-1.5 text-xs font-mono text-emerald-400 ring-1 ring-emerald-500/30">

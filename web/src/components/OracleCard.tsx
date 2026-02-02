@@ -42,9 +42,6 @@ export function OracleCard({ oracle, presence }: OracleCardProps) {
           <div className="flex items-center gap-2">
             <h3 className="font-semibold text-slate-100 truncate">
               {displayInfo.displayName}
-              {oracle.oracle_name && oracle.oracle_name !== oracle.name && (
-                <span className="ml-1 font-normal text-slate-500">({oracle.oracle_name})</span>
-              )}
             </h3>
             {displayInfo.label && (
               <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${
@@ -67,10 +64,10 @@ export function OracleCard({ oracle, presence }: OracleCardProps) {
         <p className="mb-3 text-sm text-slate-400 line-clamp-2">{oracle.bio}</p>
       )}
 
-      {oracle.human && (
+      {oracle.expand?.owner && (
         <div className="mb-3 text-sm">
-          <span className="text-slate-500">Human: </span>
-          <span className="text-slate-300">{oracle.human}</span>
+          <span className="text-slate-500">Owner: </span>
+          <span className="text-slate-300">@{oracle.expand.owner.github_username || oracle.expand.owner.display_name || 'Unknown'}</span>
         </div>
       )}
 

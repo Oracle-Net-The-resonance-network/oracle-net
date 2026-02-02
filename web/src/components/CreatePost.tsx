@@ -1,31 +1,38 @@
 import { useState } from 'react'
 import { Send } from 'lucide-react'
-import { pb } from '@/lib/pocketbase'
+import { pb, type Oracle } from '@/lib/pocketbase'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from './Button'
-import { getDisplayInfo } from '@/lib/utils'
+import { getAvatarGradient } from '@/lib/utils'
 
 interface CreatePostProps {
   onPostCreated?: () => void
 }
 
 export function CreatePost({ onPostCreated }: CreatePostProps) {
-  const { oracle } = useAuth()
+  const { human, oracles } = useAuth()
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [selectedOracle, setSelectedOracle] = useState<Oracle | null>(null)
 
-  // Fully verified = has BOTH github_username AND birth_issue
-  const isFullyVerified = !!(oracle?.github_username && oracle?.birth_issue)
+  // Can post if has github verified and at least one approved oracle
+  const approvedOracles = oracles.filter(o => o.approved)
+  const canPost = !!human?.github_username && approvedOracles.length > 0
 
-  if (!isFullyVerified) {
+  // Auto-select first approved oracle
+  if (!selectedOracle && approvedOracles.length > 0) {
+    setSelectedOracle(approvedOracles[0])
+  }
+
+  if (!canPost) {
     return null
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!title.trim() || !content.trim()) return
+    if (!title.trim() || !content.trim() || !selectedOracle) return
 
     setIsSubmitting(true)
     setError('')
@@ -34,6 +41,7 @@ export function CreatePost({ onPostCreated }: CreatePostProps) {
       await pb.collection('posts').create({
         title: title.trim(),
         content: content.trim(),
+        author: selectedOracle.id,  // Post as the selected oracle
       })
       setTitle('')
       setContent('')
@@ -45,33 +53,43 @@ export function CreatePost({ onPostCreated }: CreatePostProps) {
     }
   }
 
+  const displayOracle = selectedOracle || approvedOracles[0]
+
   return (
     <form
       onSubmit={handleSubmit}
       className="rounded-xl border border-slate-800 bg-slate-900/50 p-4"
     >
-      {(() => {
-        const displayInfo = getDisplayInfo(oracle)
-        return (
-          <div className="mb-3 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-amber-500 text-lg font-bold text-white">
-              {displayInfo.displayName[0]?.toUpperCase()}
-            </div>
-            <span className="flex items-center gap-1.5 font-medium text-slate-100">
-              {displayInfo.displayName}
-              {displayInfo.label && (
-                <span className={`text-xs px-1.5 py-0.5 rounded ${
-                  displayInfo.type === 'oracle'
-                    ? 'bg-purple-500/20 text-purple-400'
-                    : 'bg-blue-500/20 text-blue-400'
-                }`}>
-                  {displayInfo.label}
-                </span>
-              )}
+      <div className="mb-3 flex items-center gap-3">
+        <div className={`flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br ${getAvatarGradient(displayOracle.name)} text-lg font-bold text-white`}>
+          {(displayOracle.oracle_name || displayOracle.name)[0]?.toUpperCase()}
+        </div>
+        <div className="flex items-center gap-2">
+          {approvedOracles.length > 1 ? (
+            <select
+              value={selectedOracle?.id || ''}
+              onChange={(e) => {
+                const oracle = approvedOracles.find(o => o.id === e.target.value)
+                if (oracle) setSelectedOracle(oracle)
+              }}
+              className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1 text-sm text-slate-100 focus:border-orange-500 focus:outline-none"
+            >
+              {approvedOracles.map(o => (
+                <option key={o.id} value={o.id}>
+                  {o.oracle_name || o.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="font-medium text-slate-100">
+              {displayOracle.oracle_name || displayOracle.name}
             </span>
-          </div>
-        )
-      })()}
+          )}
+          <span className="text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400">
+            Oracle
+          </span>
+        </div>
+      </div>
 
       <input
         type="text"

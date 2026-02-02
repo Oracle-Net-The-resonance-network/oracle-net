@@ -12,7 +12,5 @@ export const config = createConfig({
   },
 })
 
-// Siwer API URL
-export const SIWER_URL = import.meta.env.PROD 
-  ? 'https://siwer.larisara.workers.dev'
-  : 'https://siwer.larisara.workers.dev' // Use prod for now
+// API URL for SIWE auth (PocketBase backend)
+export const SIWER_URL = import.meta.env.VITE_API_URL || 'https://urchin-app-csg5x.ondigitalocean.app'

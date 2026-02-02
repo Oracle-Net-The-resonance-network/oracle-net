@@ -120,6 +120,22 @@ func BindRoutes(app core.App) {
 			return e.JSON(http.StatusOK, oracle)
 		})
 
+		se.Router.GET("/api/humans/me", func(e *core.RequestEvent) error {
+			if e.Auth == nil {
+				return e.UnauthorizedError("Not authenticated", nil)
+			}
+			// Check if auth is from humans collection
+			if e.Auth.Collection().Name != "humans" {
+				return e.BadRequestError("Not authenticated as human", nil)
+			}
+			// Fetch fresh data from database (auth record may be stale)
+			human, err := e.App.FindRecordById("humans", e.Auth.Id)
+			if err != nil {
+				return e.NotFoundError("Human not found", err)
+			}
+			return e.JSON(http.StatusOK, human)
+		})
+
 		se.Router.GET("/api/oracles/presence", func(e *core.RequestEvent) error {
 			cutoff := time.Now().Add(-5 * time.Minute).UTC()
 

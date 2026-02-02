@@ -42,8 +42,8 @@ export default function ConnectWallet() {
     setError(null)
 
     try {
-      // Step 1: Get nonce from siwer
-      const nonceRes = await fetch(`${SIWER_URL}/nonce`, {
+      // Step 1: Get nonce from PocketBase SIWE endpoint
+      const nonceRes = await fetch(`${SIWER_URL}/api/auth/siwe/nonce`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ address })
@@ -57,8 +57,8 @@ export default function ConnectWallet() {
       // Step 2: Sign message with wallet
       const signature = await signMessageAsync({ message })
 
-      // Step 3: Verify with siwer
-      const verifyRes = await fetch(`${SIWER_URL}/verify`, {
+      // Step 3: Verify with PocketBase SIWE endpoint
+      const verifyRes = await fetch(`${SIWER_URL}/api/auth/siwe/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ address, signature })

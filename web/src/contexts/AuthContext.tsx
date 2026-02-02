@@ -1,14 +1,20 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 import { useAccount } from 'wagmi'
-import { pb, getMe, type Oracle } from '@/lib/pocketbase'
+import { pb, getMe, getMyOracles, type Human, type Oracle } from '@/lib/pocketbase'
 
 interface AuthContextType {
-  oracle: Oracle | null
+  human: Human | null
+  oracles: Oracle[]
   isLoading: boolean
   isAuthenticated: boolean
   login: (email: string, password: string) => Promise<void>
   register: (email: string, password: string, name: string) => Promise<void>
   logout: () => void
+  setHuman: (human: Human | null) => void
+  setOracles: (oracles: Oracle[]) => void
+  refreshAuth: () => Promise<void>
+  // Legacy compatibility - returns first oracle or null
+  oracle: Oracle | null
   setOracle: (oracle: Oracle | null) => void
   refreshOracle: () => Promise<void>
 }
@@ -24,22 +30,31 @@ export function useAuth() {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [oracle, setOracle] = useState<Oracle | null>(null)
+  const [human, setHuman] = useState<Human | null>(null)
+  const [oracles, setOracles] = useState<Oracle[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const { isConnected } = useAccount()
   const wasConnected = useRef(false)
 
-  const fetchMe = useCallback(async () => {
+  const fetchAuth = useCallback(async () => {
     // Only load auth if wallet is connected
     if (pb.authStore.isValid && isConnected) {
       const me = await getMe()
-      setOracle(me)
+      setHuman(me)
+      // Fetch oracles owned by this human
+      if (me?.id) {
+        const myOracles = await getMyOracles(me.id)
+        setOracles(myOracles)
+      } else {
+        setOracles([])
+      }
     } else {
       // Clear stale auth if wallet not connected
       if (!isConnected && pb.authStore.isValid) {
         pb.authStore.clear()
       }
-      setOracle(null)
+      setHuman(null)
+      setOracles([])
     }
     setIsLoading(false)
   }, [isConnected])
@@ -49,79 +64,95 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (wasConnected.current && !isConnected) {
       // Wallet was connected, now disconnected - clear auth
       pb.authStore.clear()
-      setOracle(null)
+      setHuman(null)
+      setOracles([])
     }
     wasConnected.current = isConnected
   }, [isConnected])
 
   useEffect(() => {
-    fetchMe()
-  }, [fetchMe])
+    fetchAuth()
+  }, [fetchAuth])
 
+  // Heartbeat for all owned oracles
   useEffect(() => {
-    if (!oracle) return
+    if (oracles.length === 0) return
 
-    const sendHeartbeat = async () => {
-      try {
-        // Upsert: find existing heartbeat or create new one
-        const existing = await pb.collection('heartbeats').getFirstListItem(
-          `oracle = "${oracle.id}"`
-        ).catch(() => null)
+    const sendHeartbeats = async () => {
+      for (const oracle of oracles) {
+        try {
+          const existing = await pb.collection('heartbeats').getFirstListItem(
+            `oracle = "${oracle.id}"`
+          ).catch(() => null)
 
-        if (existing) {
-          // Update existing heartbeat (updates the `updated` timestamp)
-          await pb.collection('heartbeats').update(existing.id, { status: 'online' })
-        } else {
-          // Create first heartbeat
-          await pb.collection('heartbeats').create({
-            oracle: oracle.id,
-            status: 'online'
-          })
+          if (existing) {
+            await pb.collection('heartbeats').update(existing.id, { status: 'online' })
+          } else {
+            await pb.collection('heartbeats').create({
+              oracle: oracle.id,
+              status: 'online'
+            })
+          }
+        } catch (e) {
+          console.error('Heartbeat failed for oracle:', oracle.id, e)
         }
-      } catch (e) {
-        console.error('Heartbeat failed:', e)
       }
     }
 
-    sendHeartbeat()
-    const interval = setInterval(sendHeartbeat, 2 * 60 * 1000)
+    sendHeartbeats()
+    const interval = setInterval(sendHeartbeats, 2 * 60 * 1000)
 
     return () => clearInterval(interval)
-  }, [oracle])
+  }, [oracles])
 
   const login = async (email: string, password: string) => {
-    await pb.collection('oracles').authWithPassword(email, password)
-    await fetchMe()
+    await pb.collection('humans').authWithPassword(email, password)
+    await fetchAuth()
   }
 
   const register = async (email: string, password: string, name: string) => {
-    await pb.collection('oracles').create({
+    await pb.collection('humans').create({
       email,
       password,
       passwordConfirm: password,
-      name,
+      display_name: name,
     })
     await login(email, password)
   }
 
   const logout = () => {
     pb.authStore.clear()
-    setOracle(null)
+    setHuman(null)
+    setOracles([])
   }
 
-  const refreshOracle = async () => {
-    await fetchMe()
+  const refreshAuth = async () => {
+    await fetchAuth()
   }
+
+  // Legacy compatibility
+  const oracle = oracles.length > 0 ? oracles[0] : null
+  const setOracle = (o: Oracle | null) => {
+    if (o) setOracles([o])
+    else setOracles([])
+  }
+  const refreshOracle = refreshAuth
 
   return (
     <AuthContext.Provider
       value={{
-        oracle,
+        human,
+        oracles,
         isLoading,
-        isAuthenticated: !!oracle,
+        isAuthenticated: !!human,
         login,
         register,
         logout,
+        setHuman,
+        setOracles,
+        refreshAuth,
+        // Legacy
+        oracle,
         setOracle,
         refreshOracle,
       }}

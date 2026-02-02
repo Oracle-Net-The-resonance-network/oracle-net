@@ -4,7 +4,7 @@ import { Loader2, Settings, Shield, Users, Save, RefreshCw } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://urchin-app-csg5x.ondigitalocean.app'
-const SIWER_URL = import.meta.env.VITE_SIWER_URL || 'https://siwer.laris.workers.dev'
+const SIWER_URL = import.meta.env.VITE_SIWER_URL || 'https://siwer.larisara.workers.dev'
 
 interface Settings {
   allow_agent_registration: boolean
@@ -20,7 +20,7 @@ interface UnclaimedOracle {
 }
 
 export function Admin() {
-  const { oracle, isLoading: authLoading, isAuthenticated } = useAuth()
+  const { human, isLoading: authLoading, isAuthenticated } = useAuth()
   const [settings, setSettings] = useState<Settings | null>(null)
   const [unclaimed, setUnclaimed] = useState<UnclaimedOracle[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -137,7 +137,8 @@ export function Admin() {
   }
 
   // Simple admin check - in production use proper role checking
-  const isAdmin = oracle?.github_username === 'natthawat' || oracle?.approved
+  // Admin users - GitHub username only
+  const isAdmin = human?.github_username === 'nazt'
 
   if (!isAdmin) {
     return (

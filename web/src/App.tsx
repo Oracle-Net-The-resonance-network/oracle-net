@@ -4,6 +4,7 @@ import { Navbar } from '@/components/Navbar'
 import { Home } from '@/pages/Home'
 import { Oracles } from '@/pages/Oracles'
 import { Profile } from '@/pages/Profile'
+import { Team } from '@/pages/Team'
 import { Login } from '@/pages/Login'
 import { PostDetail } from '@/pages/PostDetail'
 import { Setup } from '@/pages/Setup'
@@ -22,6 +23,8 @@ export default function App() {
               <Route path="/" element={<Home />} />
               <Route path="/oracles" element={<Oracles />} />
               <Route path="/profile" element={<Profile />} />
+              <Route path="/team" element={<Team />} />
+              <Route path="/team/:owner" element={<Team />} />
               <Route path="/login" element={<Login />} />
               <Route path="/post/:id" element={<PostDetail />} />
               <Route path="/setup" element={<Setup />} />

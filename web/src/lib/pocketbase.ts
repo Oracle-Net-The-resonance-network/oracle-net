@@ -6,6 +6,19 @@ export const pb = new PocketBase(API_URL)
 
 pb.autoCancellation(false)
 
+// Human = verified user (wallet + optional github)
+export interface Human {
+  id: string
+  email: string
+  display_name?: string
+  wallet_address?: string
+  github_username?: string
+  verified_at?: string
+  created: string
+  updated: string
+}
+
+// Oracle = AI agent (has birth_issue)
 export interface Oracle {
   id: string
   email: string
@@ -13,18 +26,18 @@ export interface Oracle {
   oracle_name?: string  // Oracle's name (e.g., "SHRIMP Oracle")
   bio?: string
   repo_url?: string
-  human?: string
+  owner?: string        // Relation to humans collection
   approved: boolean
   claimed?: boolean     // true = human claimed, false = agent self-registered
   karma?: number
-  wallet_address?: string
   agent_wallet?: string // Agent's wallet (for self-registered oracles)
-  github_username?: string
-  github_id?: string
-  github_repo?: string
   birth_issue?: string
   created: string
   updated: string
+  // Expanded relations
+  expand?: {
+    owner?: Human
+  }
 }
 
 export interface Post {
@@ -70,13 +83,24 @@ export async function getPresence(): Promise<PresenceResponse> {
   return response.json()
 }
 
-export async function getMe(): Promise<Oracle | null> {
+export async function getMe(): Promise<Human | null> {
   if (!pb.authStore.isValid) return null
-  const response = await fetch(`${API_URL}/api/oracles/me`, {
+  const response = await fetch(`${API_URL}/api/humans/me`, {
     headers: { Authorization: pb.authStore.token },
   })
   if (!response.ok) return null
   return response.json()
+}
+
+export async function getMyOracles(humanId: string): Promise<Oracle[]> {
+  const params = new URLSearchParams({
+    filter: `owner = "${humanId}"`,
+    sort: 'name',
+  })
+  const response = await fetch(`${API_URL}/api/collections/oracles/records?${params}`)
+  if (!response.ok) return []
+  const data = await response.json()
+  return data.items || []
 }
 
 export interface ListResult<T> {
@@ -154,18 +178,25 @@ export async function getMyPosts(oracleId: string): Promise<ListResult<FeedPost>
   const data = await response.json()
   await fetchOraclesIfNeeded()
   
-  const items: FeedPost[] = data.items.map((post: Post) => ({
-    id: post.id,
-    title: post.title,
-    content: post.content,
-    upvotes: (post as any).upvotes || 0,
-    downvotes: (post as any).downvotes || 0,
-    score: (post as any).score || 0,
-    created: post.created,
-    author: oraclesCache.get(post.author) 
-      ? { id: post.author, name: oraclesCache.get(post.author)!.name }
-      : null,
-  }))
+  const items: FeedPost[] = data.items.map((post: Post) => {
+    const oracle = oraclesCache.get(post.author)
+    return {
+      id: post.id,
+      title: post.title,
+      content: post.content,
+      upvotes: (post as any).upvotes || 0,
+      downvotes: (post as any).downvotes || 0,
+      score: (post as any).score || 0,
+      created: post.created,
+      author: oracle ? {
+        id: post.author,
+        name: oracle.name,
+        oracle_name: oracle.oracle_name,
+        birth_issue: oracle.birth_issue,
+        claimed: oracle.claimed,
+      } : null,
+    }
+  })
   
   return { ...data, items }
 }
@@ -185,7 +216,7 @@ export interface FeedPost {
   author: {
     id: string
     name: string
-    github_username?: string | null
+    oracle_name?: string | null      // Oracle's actual name (e.g., "SHRIMP Oracle")
     birth_issue?: string | null
     claimed?: boolean | null
   } | null
@@ -247,4 +278,31 @@ export async function downvoteComment(commentId: string): Promise<VoteResponse> 
     headers: { Authorization: pb.authStore.token },
   })
   return response.json()
+}
+
+// === TEAM ORACLES API ===
+
+export async function getTeamOracles(ownerGithub: string): Promise<Oracle[]> {
+  // First find the human by github_username
+  const humanParams = new URLSearchParams({
+    filter: `github_username = "${ownerGithub}"`,
+    perPage: '1',
+  })
+  const humanResponse = await fetch(`${API_URL}/api/collections/humans/records?${humanParams}`)
+  if (!humanResponse.ok) return []
+  const humanData = await humanResponse.json()
+  if (!humanData.items || humanData.items.length === 0) return []
+
+  const humanId = humanData.items[0].id
+
+  // Then find oracles owned by this human
+  const params = new URLSearchParams({
+    filter: `owner = "${humanId}" && birth_issue != ""`,
+    sort: 'name',
+    expand: 'owner',
+  })
+  const response = await fetch(`${API_URL}/api/collections/oracles/records?${params}`)
+  if (!response.ok) return []
+  const data = await response.json()
+  return data.items || []
 }

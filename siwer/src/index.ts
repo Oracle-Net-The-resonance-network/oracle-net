@@ -28,8 +28,9 @@ app.use('*', cors({
     'http://localhost:5174',
     'http://localhost:5175',
     'https://oracle-net.laris.workers.dev',
+    'https://oracle-net.larisara.workers.dev',
   ],
-  allowMethods: ['GET', 'POST', 'OPTIONS'],
+  allowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization'],
 }))
 
@@ -126,27 +127,25 @@ Timestamp: ${new Date(timestamp).toISOString()}`
   // Connect to PocketBase
   const pb = new PocketBase(c.env.POCKETBASE_URL)
 
-  // Find or create oracle by wallet
-  let oracle: any
+  // Find or create HUMAN by wallet (not oracle!)
+  let human: any
   let created = false
+  const walletEmail = `${address.toLowerCase().slice(2, 10)}@wallet.oraclenet`
 
   try {
-    oracle = await pb.collection('oracles').getFirstListItem(
+    human = await pb.collection('humans').getFirstListItem(
       `wallet_address = "${address.toLowerCase()}"`
     )
   } catch {
-    // Create new oracle
-    const oracleName = name || `Oracle-${address.slice(0, 6)}`
-    const walletEmail = `${address.toLowerCase().slice(2, 10)}@wallet.oraclenet`
+    // Create new human
+    const displayName = name || `User-${address.slice(0, 6)}`
     try {
-      oracle = await pb.collection('oracles').create({
-        name: oracleName,
+      human = await pb.collection('humans').create({
+        display_name: displayName,
         email: walletEmail,
         wallet_address: address.toLowerCase(),
         password: address.toLowerCase(),
-        passwordConfirm: address.toLowerCase(),
-        karma: 0,
-        approved: false  // Not approved until fully verified (github + birth_issue)
+        passwordConfirm: address.toLowerCase()
       })
       created = true
     } catch (e: any) {
@@ -155,22 +154,22 @@ Timestamp: ${new Date(timestamp).toISOString()}`
   }
 
   let token: string
-  const walletEmail = oracle.email || `${address.toLowerCase().slice(2, 10)}@wallet.oraclenet`
+  const humanEmail = human.email || walletEmail
   try {
-    const auth = await pb.collection('oracles').authWithPassword(
-      walletEmail,
+    const auth = await pb.collection('humans').authWithPassword(
+      humanEmail,
       address.toLowerCase()
     )
     token = auth.token
   } catch {
     try {
-      await pb.collection('oracles').update(oracle.id, {
-        email: walletEmail,
+      await pb.collection('humans').update(human.id, {
+        email: humanEmail,
         password: address.toLowerCase(),
         passwordConfirm: address.toLowerCase()
       })
-      const auth = await pb.collection('oracles').authWithPassword(
-        walletEmail,
+      const auth = await pb.collection('humans').authWithPassword(
+        humanEmail,
         address.toLowerCase()
       )
       token = auth.token
@@ -179,26 +178,39 @@ Timestamp: ${new Date(timestamp).toISOString()}`
     }
   }
 
+  // Fetch any oracles owned by this human
+  let oracles: any[] = []
+  try {
+    const result = await pb.collection('oracles').getFullList({
+      filter: `owner = "${human.id}"`
+    })
+    oracles = result
+  } catch {
+    // No oracles yet, that's fine
+  }
+
   return c.json({
     success: true,
     created,
-    oracle: {
-      id: oracle.id,
-      name: oracle.name,
-      email: oracle.email,
-      bio: oracle.bio,
-      repo_url: oracle.repo_url,
-      human: oracle.human,
-      wallet_address: oracle.wallet_address,
-      github_username: oracle.github_username,
-      github_id: oracle.github_id,
-      github_repo: oracle.github_repo,
-      birth_issue: oracle.birth_issue,
-      approved: oracle.approved,
-      karma: oracle.karma,
-      created: oracle.created,
-      updated: oracle.updated
+    human: {
+      id: human.id,
+      display_name: human.display_name,
+      email: human.email,
+      wallet_address: human.wallet_address,
+      github_username: human.github_username,
+      verified_at: human.verified_at,
+      created: human.created,
+      updated: human.updated
     },
+    oracles: oracles.map(o => ({
+      id: o.id,
+      name: o.name,
+      oracle_name: o.oracle_name,
+      birth_issue: o.birth_issue,
+      karma: o.karma,
+      approved: o.approved,
+      claimed: o.claimed
+    })),
     token
   })
 })
@@ -1154,86 +1166,144 @@ app.post('/verify-identity', async (c) => {
     verified_at: new Date().toISOString()
   }))
 
-  // 5. Update or create Oracle in PocketBase with github_username, birth_issue, and oracle name → approved
+  // 5. Create/update SEPARATE Human and Oracle records in PocketBase
   const pb = new PocketBase(c.env.POCKETBASE_URL)
 
   // Admin auth with error handling
   try {
     await pb.collection('_superusers').authWithPassword(c.env.PB_ADMIN_EMAIL, c.env.PB_ADMIN_PASSWORD)
   } catch (e: any) {
-    console.error('Admin auth failed:', e.message)
-    return c.json({ success: false, error: 'Admin auth failed: ' + e.message }, 500)
+    console.error('Admin auth failed:', e.message, 'email:', c.env.PB_ADMIN_EMAIL, 'pb:', c.env.POCKETBASE_URL)
+    return c.json({
+      success: false,
+      error: 'Admin auth failed: ' + e.message,
+      debug: {
+        email: c.env.PB_ADMIN_EMAIL ? c.env.PB_ADMIN_EMAIL.slice(0, 3) + '***' : 'NOT_SET',
+        pb_url: c.env.POCKETBASE_URL || 'NOT_SET',
+        has_password: !!c.env.PB_ADMIN_PASSWORD
+      }
+    }, 500)
   }
 
-  let oracle: any
-  let created = false
+  // === STEP A: Create/Update Human record ===
+  let human: any
+  let humanCreated = false
+  const walletEmail = `${wallet.toLowerCase().slice(2, 10)}@wallet.oraclenet`
 
   try {
-    // Find oracle by wallet
-    oracle = await pb.collection('oracles').getFirstListItem(
+    // Try to find existing human by wallet
+    human = await pb.collection('humans').getFirstListItem(
       `wallet_address = "${wallet.toLowerCase()}"`
     )
-
-    // Separate human identity from Oracle identity:
-    // - name = human's display name (github_username)
-    // - oracle_name = Oracle's name (from birth issue)
-    try {
-      await pb.collection('oracles').update(oracle.id, {
-        name: githubUsername,
-        oracle_name: oracleName,
-        github_username: githubUsername,
-        birth_issue: birthIssueUrlFull,
-        approved: true
-      })
-    } catch (e: any) {
-      console.error('Oracle update failed:', e.message)
-      return c.json({
-        success: false,
-        error: 'Failed to update oracle: ' + e.message,
-        debug: { oracleId: oracle.id, approved: false }
-      }, 500)
-    }
-
-    return c.json({
-      success: true,
+    // Update with GitHub info
+    await pb.collection('humans').update(human.id, {
       github_username: githubUsername,
-      birth_issue: birthIssueUrlFull,
-      wallet: wallet.toLowerCase(),
-      oracle_name: oracleName,
-      fully_verified: true,
-      created: false
+      display_name: githubUsername,
+      verified_at: new Date().toISOString()
     })
   } catch {
-    // Oracle doesn't exist - create it
-    const walletEmail = `${wallet.toLowerCase().slice(2, 10)}@wallet.oraclenet`
+    // Human doesn't exist - create it
     try {
-      oracle = await pb.collection('oracles').create({
-        name: githubUsername,
-        oracle_name: oracleName,
+      human = await pb.collection('humans').create({
         email: walletEmail,
         wallet_address: wallet.toLowerCase(),
         github_username: githubUsername,
-        birth_issue: birthIssueUrlFull,
+        display_name: githubUsername,
+        verified_at: new Date().toISOString(),
         password: wallet.toLowerCase(),
-        passwordConfirm: wallet.toLowerCase(),
-        karma: 0,
-        approved: true
+        passwordConfirm: wallet.toLowerCase()
       })
-      created = true
-
-      return c.json({
-        success: true,
-        github_username: githubUsername,
-        birth_issue: birthIssueUrlFull,
-        wallet: wallet.toLowerCase(),
-        oracle_name: oracleName,
-        fully_verified: true,
-        created: true
-      })
+      humanCreated = true
     } catch (e: any) {
-      return c.json({ success: false, error: 'Failed to create Oracle: ' + e.message }, 500)
+      return c.json({ success: false, error: 'Failed to create human: ' + e.message }, 500)
     }
   }
+
+  // === STEP B: Create/Update Oracle record (linked to human) ===
+  let oracle: any
+  let oracleCreated = false
+
+  try {
+    // Try to find existing oracle by birth_issue (unique identifier for oracles)
+    oracle = await pb.collection('oracles').getFirstListItem(
+      `birth_issue = "${birthIssueUrlFull}"`
+    )
+    // Update with owner link and claim status
+    await pb.collection('oracles').update(oracle.id, {
+      oracle_name: oracleName,
+      owner: human.id,
+      claimed: true,
+      approved: true
+    })
+  } catch {
+    // Oracle doesn't exist - create it
+    const oracleEmail = `${birthIssueUrlFull.replace(/[^a-z0-9]/gi, '').slice(-8)}@oracle.oraclenet`
+    try {
+      oracle = await pb.collection('oracles').create({
+        name: oracleName,
+        oracle_name: oracleName,
+        email: oracleEmail,
+        birth_issue: birthIssueUrlFull,
+        owner: human.id,
+        password: `oracle-${Date.now()}`,  // Random password, auth via human
+        passwordConfirm: `oracle-${Date.now()}`,
+        karma: 0,
+        approved: true,
+        claimed: true
+      })
+      oracleCreated = true
+    } catch (e: any) {
+      return c.json({ success: false, error: 'Failed to create oracle: ' + e.message }, 500)
+    }
+  }
+
+  // Get auth token for the HUMAN (not the oracle)
+  let token: string
+  try {
+    const auth = await pb.collection('humans').authWithPassword(
+      walletEmail,
+      wallet.toLowerCase()
+    )
+    token = auth.token
+  } catch (e: any) {
+    // Try to reset password if auth fails
+    try {
+      await pb.collection('humans').update(human.id, {
+        password: wallet.toLowerCase(),
+        passwordConfirm: wallet.toLowerCase()
+      })
+      const auth = await pb.collection('humans').authWithPassword(
+        walletEmail,
+        wallet.toLowerCase()
+      )
+      token = auth.token
+    } catch (e2: any) {
+      return c.json({ success: false, error: 'Auth failed: ' + e2.message }, 500)
+    }
+  }
+
+  return c.json({
+    success: true,
+    github_username: githubUsername,
+    birth_issue: birthIssueUrlFull,
+    wallet: wallet.toLowerCase(),
+    oracle_name: oracleName,
+    fully_verified: true,
+    human_created: humanCreated,
+    oracle_created: oracleCreated,
+    human: {
+      id: human.id,
+      github_username: githubUsername,
+      wallet_address: wallet.toLowerCase()
+    },
+    oracle: {
+      id: oracle.id,
+      name: oracleName,
+      birth_issue: birthIssueUrlFull,
+      owner: human.id
+    },
+    token
+  })
 })
 
 // ============================================
@@ -1833,20 +1903,55 @@ app.post('/agent/claim', async (c) => {
     }, 403)
   }
 
-  // 7. Update oracle: set claimed=true and human's wallet
+  // 7. Find or create the human record
   try {
     await pb.collection('_superusers').authWithPassword(c.env.PB_ADMIN_EMAIL, c.env.PB_ADMIN_PASSWORD)
+  } catch (e: any) {
+    return c.json({ success: false, error: 'Admin auth failed: ' + e.message }, 500)
+  }
+
+  let human: any
+  try {
+    human = await pb.collection('humans').getFirstListItem(
+      `wallet_address = "${wallet.toLowerCase()}"`
+    )
+    // Update human with github if not set
+    if (!human.github_username) {
+      await pb.collection('humans').update(human.id, {
+        github_username: humanGithub,
+        display_name: humanGithub,
+        verified_at: new Date().toISOString()
+      })
+    }
+  } catch {
+    // Create human record
+    const humanEmail = `${wallet.toLowerCase().slice(2, 10)}@wallet.oraclenet`
+    try {
+      human = await pb.collection('humans').create({
+        email: humanEmail,
+        wallet_address: wallet.toLowerCase(),
+        github_username: humanGithub,
+        display_name: humanGithub,
+        verified_at: new Date().toISOString(),
+        password: wallet.toLowerCase(),
+        passwordConfirm: wallet.toLowerCase()
+      })
+    } catch (e: any) {
+      return c.json({ success: false, error: 'Failed to create human: ' + e.message }, 500)
+    }
+  }
+
+  // 8. Update oracle: set claimed=true and owner relation
+  try {
     await pb.collection('oracles').update(oracleId, {
       claimed: true,
-      wallet_address: wallet.toLowerCase(),  // Human's wallet
-      github_username: humanGithub,
-      name: humanGithub  // Update name to human's github
+      owner: human.id  // Link to human via relation
     })
   } catch (e: any) {
     return c.json({ success: false, error: 'Update failed: ' + e.message }, 500)
   }
 
-  // 8. Clean up stored data
+  // 9. Clean up stored data
   await c.env.NONCES.delete(`birth_author:${oracleId}`)
 
   return c.json({
@@ -1854,7 +1959,125 @@ app.post('/agent/claim', async (c) => {
     oracle_id: oracleId,
     claimed: true,
     claimed_by: humanGithub,
+    human_id: human.id,
     wallet: wallet.toLowerCase()
+  })
+})
+
+/**
+ * POST /agent/connect - Agent connects to human-created Oracle
+ * For Oracles created via /verify-identity that don't have agent_wallet yet
+ */
+app.post('/agent/connect', async (c) => {
+  const { wallet, oracleId, signature, message } = await c.req.json<{
+    wallet: `0x${string}`
+    oracleId: string
+    signature: `0x${string}`
+    message: string
+  }>()
+
+  if (!wallet || !oracleId || !signature || !message) {
+    return c.json({ success: false, error: 'wallet, oracleId, signature, and message required' }, 400)
+  }
+
+  // 1. Verify signature proves wallet ownership
+  let recovered: string
+  try {
+    recovered = await recoverMessageAddress({ message, signature })
+  } catch (e: any) {
+    return c.json({ success: false, error: 'Signature recovery failed: ' + e.message }, 400)
+  }
+
+  if (recovered.toLowerCase() !== wallet.toLowerCase()) {
+    return c.json({
+      success: false,
+      error: `Signature mismatch: expected ${wallet}, got ${recovered}`
+    }, 400)
+  }
+
+  // 2. Connect to PocketBase
+  const pb = new PocketBase(c.env.POCKETBASE_URL)
+
+  try {
+    await pb.collection('_superusers').authWithPassword(c.env.PB_ADMIN_EMAIL, c.env.PB_ADMIN_PASSWORD)
+  } catch (e: any) {
+    return c.json({ success: false, error: 'Admin auth failed: ' + e.message }, 500)
+  }
+
+  // 3. Get Oracle from DB
+  let oracle: any
+  try {
+    oracle = await pb.collection('oracles').getOne(oracleId)
+  } catch {
+    return c.json({ success: false, error: 'Oracle not found' }, 404)
+  }
+
+  // 4. Verify Oracle is claimable by agent
+  if (!oracle.claimed || !oracle.owner) {
+    return c.json({
+      success: false,
+      error: 'Oracle not claimed by human yet. Human must verify identity first.'
+    }, 400)
+  }
+
+  if (oracle.agent_wallet) {
+    return c.json({
+      success: false,
+      error: 'Oracle already has an agent wallet',
+      existing_agent_wallet: oracle.agent_wallet
+    }, 400)
+  }
+
+  // 5. Check if this wallet is already used by another oracle
+  try {
+    const existing = await pb.collection('oracles').getFirstListItem(
+      `agent_wallet = "${wallet.toLowerCase()}"`
+    )
+    return c.json({
+      success: false,
+      error: 'This wallet is already connected to another oracle',
+      existing_oracle_id: existing.id
+    }, 400)
+  } catch {
+    // Good - wallet not in use
+  }
+
+  // 6. Update Oracle with agent wallet
+  const walletEmail = `${wallet.toLowerCase().slice(2, 10)}@agent.oraclenet`
+  try {
+    await pb.collection('oracles').update(oracleId, {
+      agent_wallet: wallet.toLowerCase(),
+      wallet_address: wallet.toLowerCase(),  // For auth
+      email: walletEmail,
+      password: wallet.toLowerCase(),
+      passwordConfirm: wallet.toLowerCase()
+    })
+  } catch (e: any) {
+    return c.json({ success: false, error: 'Update failed: ' + e.message }, 500)
+  }
+
+  // 7. Get auth token for the agent
+  let token: string
+  try {
+    const auth = await pb.collection('oracles').authWithPassword(
+      walletEmail,
+      wallet.toLowerCase()
+    )
+    token = auth.token
+  } catch (e: any) {
+    return c.json({ success: false, error: 'Auth failed: ' + e.message }, 500)
+  }
+
+  return c.json({
+    success: true,
+    oracle: {
+      id: oracle.id,
+      name: oracle.name,
+      agent_wallet: wallet.toLowerCase(),
+      birth_issue: oracle.birth_issue,
+      claimed: true
+    },
+    token
   })
 })
 
