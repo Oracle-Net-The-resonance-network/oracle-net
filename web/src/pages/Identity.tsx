@@ -47,6 +47,10 @@ export function Identity() {
   const [newBot, setNewBot] = useState('')
   const [newOracle, setNewOracle] = useState('')
   const [newIssue, setNewIssue] = useState('')
+  const [newIssueData, setNewIssueData] = useState<{ title: string; author: string } | null>(null)
+  const [isFetchingNewIssue, setIsFetchingNewIssue] = useState(false)
+  const [autoFilledBotName, setAutoFilledBotName] = useState<string | null>(null)
+  const [isIssueOwnedByUser, setIsIssueOwnedByUser] = useState(false)
 
   const merkleRoot = getMerkleRoot(assignments)
 
@@ -91,11 +95,30 @@ export function Identity() {
 
   // Extract oracle name from birth issue title
   const extractOracleName = (title: string): string | null => {
-    // Common formats: "Birth: OracleName", "💒 Birth: OracleName", "🦐 Birth: SHRIMP"
-    const match = title.match(/[Bb]irth[:\s]+(.+)/) || title.match(/(.+?)\s*[Bb]irth/)
-    if (match) {
-      return match[1].trim().replace(/^[🦐🦞💒\s]+/, '').trim()
+    // Remove emoji prefix
+    const cleaned = title.replace(/^[\p{Emoji}\s]+/u, '').trim()
+
+    // Pattern 1: "Birth: OracleName" or "Birth OracleName"
+    const birthMatch = cleaned.match(/[Bb]irth[:\s]+(.+)/)
+    if (birthMatch) {
+      const afterBirth = birthMatch[1].trim()
+      // Take text before " — " or " - " separator if exists
+      const beforeSeparator = afterBirth.split(/\s[—-]\s/)[0].trim()
+      return beforeSeparator
     }
+
+    // Pattern 2: "XXX Oracle Awakens..." or "XXX Oracle ..." - extract "XXX Oracle"
+    const oracleMatch = cleaned.match(/^(.+?\s*Oracle)(?:\s+Awakens|\s+[—-]|\s*$)/i)
+    if (oracleMatch) {
+      return oracleMatch[1].trim()
+    }
+
+    // Pattern 3: Take text before " — " or " - " separator
+    const beforeSeparator = cleaned.split(/\s[—-]\s/)[0].trim()
+    if (beforeSeparator && beforeSeparator !== cleaned) {
+      return beforeSeparator
+    }
+
     return null
   }
 
@@ -195,6 +218,53 @@ export function Identity() {
     const timer = setTimeout(fetchVerificationIssue, 500)
     return () => clearTimeout(timer)
   }, [verificationIssueUrl])
+
+  // Fetch bot birth issue when newIssue changes (for Assign Bots section)
+  useEffect(() => {
+    const fetchBotIssue = async () => {
+      if (!newIssue || !/^\d+$/.test(newIssue.trim())) {
+        setNewIssueData(null)
+        setIsIssueOwnedByUser(false)
+        return
+      }
+
+      const issueNumber = newIssue.trim()
+      setIsFetchingNewIssue(true)
+
+      try {
+        const res = await fetch(`https://api.github.com/repos/${DEFAULT_BIRTH_REPO}/issues/${issueNumber}`, {
+          headers: { 'User-Agent': 'OracleNet-Web' }
+        })
+        if (!res.ok) throw new Error('Failed to fetch')
+        const issue = await res.json()
+
+        const author = issue.user?.login || ''
+        setNewIssueData({
+          title: issue.title || '',
+          author
+        })
+
+        // Validate ownership - birth issue author must match verified user's GitHub username
+        const isOwned = author.toLowerCase() === oracle?.github_username?.toLowerCase()
+        setIsIssueOwnedByUser(isOwned)
+
+        // Auto-fill oracle name if field is empty or was previously auto-filled
+        const extracted = extractOracleName(issue.title || '')
+        if (extracted && (!newOracle || newOracle === autoFilledBotName)) {
+          setNewOracle(extracted)
+          setAutoFilledBotName(extracted)
+        }
+      } catch {
+        setNewIssueData(null)
+        setIsIssueOwnedByUser(false)
+      } finally {
+        setIsFetchingNewIssue(false)
+      }
+    }
+
+    const timer = setTimeout(fetchBotIssue, 500)
+    return () => clearTimeout(timer)
+  }, [newIssue, oracle?.github_username]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Convert verification issue input to full URL (handles both "4" and full URLs)
   const normalizeVerifyIssueUrl = (input: string) => {
@@ -544,9 +614,23 @@ bun scripts/oraclenet.ts assign` : ''
                       </a>
                       {birthIssueData && (
                         <div className="text-xs text-slate-500">
-                          <span className="text-slate-400">{birthIssueData.title}</span>
+                          <a
+                            href={normalizeBirthIssueUrl(birthIssueUrl)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-slate-400 hover:text-orange-300 transition-colors"
+                          >
+                            {birthIssueData.title}
+                          </a>
                           <span className="mx-1">by</span>
-                          <span className="text-slate-400">@{birthIssueData.author}</span>
+                          <a
+                            href={`https://github.com/${birthIssueData.author}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-orange-400 hover:text-orange-300 transition-colors"
+                          >
+                            @{birthIssueData.author}
+                          </a>
                         </div>
                       )}
                     </div>
@@ -768,41 +852,94 @@ After running, paste the issue URL in the field below.`, 'ghCmd')}
               )}
 
               {/* Add Assignment Form */}
-              <div className="space-y-3 rounded-lg border border-slate-700 bg-slate-800/50 p-4">
-                <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-4 rounded-lg border border-slate-700 bg-slate-800/50 p-4">
+                {/* Birth Issue - First (triggers auto-fill) */}
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1.5">Birth Issue #</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="121 or full URL"
+                      value={newIssue}
+                      onChange={(e) => setNewIssue(e.target.value)}
+                      className="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 ring-1 ring-slate-700 focus:ring-2 focus:ring-orange-500 outline-none"
+                    />
+                    {isFetchingNewIssue && (
+                      <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-slate-500" />
+                    )}
+                  </div>
+                  {newIssueData && (
+                    <div className="mt-1.5 space-y-1">
+                      <div className="text-xs text-slate-500">
+                        <a
+                          href={`https://github.com/${DEFAULT_BIRTH_REPO}/issues/${newIssue.trim()}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-slate-400 hover:text-orange-300 transition-colors"
+                        >
+                          {newIssueData.title}
+                        </a>
+                        <span className="mx-1">by</span>
+                        <a
+                          href={`https://github.com/${newIssueData.author}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={isIssueOwnedByUser ? "text-emerald-400 hover:text-emerald-300 transition-colors" : "text-red-400 hover:text-red-300 transition-colors"}
+                        >
+                          @{newIssueData.author}
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Oracle Name - Auto-filled from birth issue */}
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1.5">
+                    Oracle Name
+                    {newOracle === autoFilledBotName && autoFilledBotName && (
+                      <span className="ml-2 text-emerald-500">(auto-filled)</span>
+                    )}
+                  </label>
                   <input
                     type="text"
-                    placeholder="Bot wallet (0x...)"
-                    value={newBot}
-                    onChange={(e) => setNewBot(e.target.value)}
-                    className="rounded-lg bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 ring-1 ring-slate-700 focus:ring-2 focus:ring-orange-500 outline-none"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Oracle name"
+                    placeholder="e.g., SHRIMP Oracle"
                     value={newOracle}
-                    onChange={(e) => setNewOracle(e.target.value)}
-                    className="rounded-lg bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 ring-1 ring-slate-700 focus:ring-2 focus:ring-orange-500 outline-none"
+                    disabled={!isIssueOwnedByUser}
+                    onChange={(e) => {
+                      setNewOracle(e.target.value)
+                      if (e.target.value !== autoFilledBotName) {
+                        setAutoFilledBotName(null)
+                      }
+                    }}
+                    className="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 ring-1 ring-slate-700 focus:ring-2 focus:ring-orange-500 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
-                <div className="flex gap-3">
+
+                {/* Bot Wallet */}
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1.5">Bot Wallet Address</label>
                   <input
-                    type="number"
-                    placeholder="Birth issue #"
-                    value={newIssue}
-                    onChange={(e) => setNewIssue(e.target.value)}
-                    className="w-32 rounded-lg bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 ring-1 ring-slate-700 focus:ring-2 focus:ring-orange-500 outline-none"
+                    type="text"
+                    placeholder="0x..."
+                    value={newBot}
+                    disabled={!isIssueOwnedByUser}
+                    onChange={(e) => setNewBot(e.target.value)}
+                    className="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 ring-1 ring-slate-700 focus:ring-2 focus:ring-orange-500 outline-none font-mono disabled:opacity-50 disabled:cursor-not-allowed"
                   />
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={handleAddAssignment}
-                    disabled={!newBot.trim() || !newOracle.trim() || !newIssue.trim()}
-                  >
-                    <Plus className="mr-1 h-4 w-4" />
-                    Add Bot
-                  </Button>
                 </div>
+
+                {/* Add Button */}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleAddAssignment}
+                  disabled={!newBot.trim() || !newOracle.trim() || !newIssue.trim() || !isIssueOwnedByUser}
+                  className="w-full"
+                >
+                  <Plus className="mr-1 h-4 w-4" />
+                  Add Bot
+                </Button>
               </div>
 
               {/* Bot Prompts */}
