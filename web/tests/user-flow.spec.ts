@@ -154,9 +154,9 @@ test.describe('Complete User Flow', () => {
       console.log('✅ 3. Connected wallet')
     }
 
-    // 5. Check wallet address is shown
+    // 5. Check wallet address is shown (may take time for connection)
     const walletDisplay = page.getByText(testAccount.address.slice(0, 6)).first()
-    await expect(walletDisplay).toBeVisible({ timeout: 5000 })
+    await expect(walletDisplay).toBeVisible({ timeout: 10000 })
     console.log('✅ 4. Wallet address visible:', testAccount.address.slice(0, 10))
 
     // 6. Navigate to Feed/Home via nav
