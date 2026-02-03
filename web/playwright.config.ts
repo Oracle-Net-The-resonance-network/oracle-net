@@ -32,6 +32,14 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
+    {
+      name: 'chromium-slow',
+      use: {
+        ...devices['Desktop Chrome'],
+        launchOptions: { slowMo: 1500 },
+        video: 'on',
+      },
+    },
   ],
 
   // Run local dev server before tests
