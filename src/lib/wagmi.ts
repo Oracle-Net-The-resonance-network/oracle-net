@@ -13,4 +13,4 @@ export const config = createConfig({
 })
 
 // API URL for SIWE auth (PocketBase backend)
-export const SIWER_URL = import.meta.env.VITE_API_URL || 'https://urchin-app-csg5x.ondigitalocean.app'
+export const SIWER_URL = import.meta.env.VITE_API_URL || 'https://jellyfish-app-xml6o.ondigitalocean.app'

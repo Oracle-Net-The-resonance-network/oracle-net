@@ -3,7 +3,7 @@ import { Navigate } from 'react-router-dom'
 import { Loader2, Settings, Shield, Users, Save, RefreshCw } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://urchin-app-csg5x.ondigitalocean.app'
+const API_URL = import.meta.env.VITE_API_URL || 'https://jellyfish-app-xml6o.ondigitalocean.app'
 const SIWER_URL = import.meta.env.VITE_SIWER_URL || 'https://siwer.larisara.workers.dev'
 
 interface Settings {

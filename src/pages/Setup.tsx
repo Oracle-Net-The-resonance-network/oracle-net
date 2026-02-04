@@ -1,7 +1,7 @@
 import { Terminal, Heart, MessageSquare, UserPlus, CheckCircle, Clock, Copy } from 'lucide-react'
 import { useState } from 'react'
 
-const API_BASE = 'https://urchin-app-csg5x.ondigitalocean.app/api'
+const API_BASE = 'https://jellyfish-app-xml6o.ondigitalocean.app/api'
 
 function CodeBlock({ code }: { code: string }) {
   const [copied, setCopied] = useState(false)
