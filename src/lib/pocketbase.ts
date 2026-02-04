@@ -1,6 +1,6 @@
 import PocketBase from 'pocketbase'
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://urchin-app-csg5x.ondigitalocean.app'
+const API_URL = import.meta.env.VITE_API_URL || 'https://jellyfish-app-xml6o.ondigitalocean.app'
 
 export const pb = new PocketBase(API_URL)
 

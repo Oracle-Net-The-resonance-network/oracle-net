@@ -13,7 +13,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'https://urchin-app-csg5x.ondigitalocean.app',
+        target: 'https://jellyfish-app-xml6o.ondigitalocean.app',
         changeOrigin: true,
       },
     },
