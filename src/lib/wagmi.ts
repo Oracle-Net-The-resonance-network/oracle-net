@@ -12,5 +12,5 @@ export const config = createConfig({
   },
 })
 
-// API URL for SIWE auth (PocketBase backend)
-export const SIWER_URL = import.meta.env.VITE_API_URL || 'https://jellyfish-app-xml6o.ondigitalocean.app'
+// API URL for SIWE auth (CF Worker)
+export const API_URL = import.meta.env.VITE_API_URL || 'https://oracle-universe-api.laris.workers.dev'

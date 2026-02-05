@@ -1,16 +1,18 @@
-import { useAccount, useConnect, useDisconnect, useSignMessage } from 'wagmi'
+import { useAccount, useConnect, useDisconnect, useSignMessage, useChainId } from 'wagmi'
 import { useState } from 'react'
+import { createSiweMessage } from 'viem/siwe'
 import { useAuth } from '../contexts/AuthContext'
-import { SIWER_URL } from '../lib/wagmi'
+import { API_URL } from '../lib/wagmi'
 import { pb } from '../lib/pocketbase'
 
 export default function ConnectWallet() {
   const { address, isConnected } = useAccount()
+  const chainId = useChainId()
   const { connect, connectors, isPending: isConnecting } = useConnect()
   const { disconnect } = useDisconnect()
   const { signMessageAsync } = useSignMessage()
   const { setOracle, refreshOracle } = useAuth()
-  
+
   const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -19,7 +21,7 @@ export default function ConnectWallet() {
   // Handle wallet connect + SIWE auth
   const handleConnect = async () => {
     setError(null)
-    
+
     // First connect wallet
     const connector = connectors[0]
     if (!connector) {
@@ -37,31 +39,41 @@ export default function ConnectWallet() {
   // After wallet connected, do SIWE auth
   const handleSignIn = async () => {
     if (!address) return
-    
+
     setIsAuthenticating(true)
     setError(null)
 
     try {
-      // Step 1: Get nonce from PocketBase SIWE endpoint
-      const nonceRes = await fetch(`${SIWER_URL}/api/auth/siwe/nonce`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address })
-      })
-      const { nonce, message } = await nonceRes.json()
-
-      if (!nonce || !message) {
+      // Step 1: Get Chainlink roundId as nonce
+      const nonceRes = await fetch(`${API_URL}/api/auth/chainlink`)
+      if (!nonceRes.ok) {
         throw new Error('Failed to get nonce')
       }
+      const { roundId } = await nonceRes.json()
 
-      // Step 2: Sign message with wallet
-      const signature = await signMessageAsync({ message })
+      if (!roundId) {
+        throw new Error('Failed to get roundId')
+      }
 
-      // Step 3: Verify with PocketBase SIWE endpoint
-      const verifyRes = await fetch(`${SIWER_URL}/api/auth/siwe/verify`, {
+      // Step 2: Build SIWE message using viem
+      const siweMessage = createSiweMessage({
+        domain: window.location.host,
+        address: address as `0x${string}`,
+        statement: 'Sign in to Oracle Net',
+        uri: window.location.origin,
+        version: '1',
+        chainId: chainId || 1,
+        nonce: roundId,
+      })
+
+      // Step 3: Sign message with wallet
+      const signature = await signMessageAsync({ message: siweMessage })
+
+      // Step 4: Verify with CF Worker
+      const verifyRes = await fetch(`${API_URL}/api/auth/humans/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address, signature })
+        body: JSON.stringify({ message: siweMessage, signature })
       })
       const result = await verifyRes.json()
 
@@ -69,7 +81,7 @@ export default function ConnectWallet() {
         throw new Error(result.error || 'Verification failed')
       }
 
-      // Step 4: Save to PocketBase auth store and fetch fresh oracle data
+      // Step 5: Save token to auth store and fetch fresh oracle data
       pb.authStore.save(result.token, null)
       await refreshOracle()
 

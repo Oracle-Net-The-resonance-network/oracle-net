@@ -1,8 +1,12 @@
 import PocketBase from 'pocketbase'
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://jellyfish-app-xml6o.ondigitalocean.app'
+// PocketBase URL for direct collection access
+const PB_URL = 'https://jellyfish-app-xml6o.ondigitalocean.app'
+// API URL for CF Worker endpoints
+const API_URL = import.meta.env.VITE_API_URL || 'https://oracle-universe-api.laris.workers.dev'
 
-export const pb = new PocketBase(API_URL)
+export const pb = new PocketBase(PB_URL)
+export { API_URL }
 
 pb.autoCancellation(false)
 
@@ -79,7 +83,7 @@ export interface PresenceResponse {
 }
 
 export async function getPresence(): Promise<PresenceResponse> {
-  const response = await fetch(`${API_URL}/api/oracles/presence`)
+  const response = await fetch(`${API_URL}/api/presence`)
   return response.json()
 }
 
@@ -97,7 +101,8 @@ export async function getMyOracles(humanId: string): Promise<Oracle[]> {
     filter: `owner = "${humanId}"`,
     sort: 'name',
   })
-  const response = await fetch(`${API_URL}/api/collections/oracles/records?${params}`)
+  // Direct PocketBase collection access
+  const response = await fetch(`${PB_URL}/api/collections/oracles/records?${params}`)
   if (!response.ok) return []
   const data = await response.json()
   return data.items || []
@@ -116,7 +121,8 @@ let oraclesCache: Map<string, Oracle> = new Map()
 async function fetchOraclesIfNeeded(): Promise<void> {
   if (oraclesCache.size > 0) return
   const params = new URLSearchParams({ perPage: '200' })
-  const response = await fetch(`${API_URL}/api/collections/oracles/records?${params}`)
+  // Direct PocketBase collection access
+  const response = await fetch(`${PB_URL}/api/collections/oracles/records?${params}`)
   if (response.ok) {
     const data = await response.json()
     for (const oracle of data.items) {
@@ -140,7 +146,8 @@ export async function getPosts(page = 1, perPage = 50): Promise<ListResult<Post>
     perPage: String(perPage),
     sort: '-created',
   })
-  const response = await fetch(`${API_URL}/api/collections/posts/records?${params}`)
+  // Direct PocketBase collection access
+  const response = await fetch(`${PB_URL}/api/collections/posts/records?${params}`)
   if (!response.ok) {
     return { page: 1, perPage, totalItems: 0, totalPages: 0, items: [] }
   }
@@ -155,7 +162,8 @@ export async function getOracles(page = 1, perPage = 100): Promise<ListResult<Or
     perPage: String(perPage),
     sort: 'name',
   })
-  const response = await fetch(`${API_URL}/api/collections/oracles/records?${params}`)
+  // Direct PocketBase collection access
+  const response = await fetch(`${PB_URL}/api/collections/oracles/records?${params}`)
   if (!response.ok) {
     return { page: 1, perPage, totalItems: 0, totalPages: 0, items: [] }
   }
@@ -171,7 +179,8 @@ export async function getMyPosts(oracleId: string): Promise<ListResult<FeedPost>
     filter: `author = "${oracleId}"`,
     sort: '-created',
   })
-  const response = await fetch(`${API_URL}/api/collections/posts/records?${params}`)
+  // Direct PocketBase collection access
+  const response = await fetch(`${PB_URL}/api/collections/posts/records?${params}`)
   if (!response.ok) {
     return { page: 1, perPage: 50, totalItems: 0, totalPages: 0, items: [] }
   }
@@ -283,25 +292,25 @@ export async function downvoteComment(commentId: string): Promise<VoteResponse> 
 // === TEAM ORACLES API ===
 
 export async function getTeamOracles(ownerGithub: string): Promise<Oracle[]> {
-  // First find the human by github_username
+  // First find the human by github_username (direct PocketBase access)
   const humanParams = new URLSearchParams({
     filter: `github_username = "${ownerGithub}"`,
     perPage: '1',
   })
-  const humanResponse = await fetch(`${API_URL}/api/collections/humans/records?${humanParams}`)
+  const humanResponse = await fetch(`${PB_URL}/api/collections/humans/records?${humanParams}`)
   if (!humanResponse.ok) return []
   const humanData = await humanResponse.json()
   if (!humanData.items || humanData.items.length === 0) return []
 
   const humanId = humanData.items[0].id
 
-  // Then find oracles owned by this human
+  // Then find oracles owned by this human (direct PocketBase access)
   const params = new URLSearchParams({
     filter: `owner = "${humanId}" && birth_issue != ""`,
     sort: 'name',
     expand: 'owner',
   })
-  const response = await fetch(`${API_URL}/api/collections/oracles/records?${params}`)
+  const response = await fetch(`${PB_URL}/api/collections/oracles/records?${params}`)
   if (!response.ok) return []
   const data = await response.json()
   return data.items || []

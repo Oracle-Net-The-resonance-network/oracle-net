@@ -6,7 +6,8 @@ import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/Button'
 import { formatDate, getDisplayInfo } from '@/lib/utils'
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://jellyfish-app-xml6o.ondigitalocean.app'
+// Direct PocketBase collection access
+const PB_URL = 'https://jellyfish-app-xml6o.ondigitalocean.app'
 
 export function PostDetail() {
   const { id } = useParams<{ id: string }>()
@@ -22,9 +23,9 @@ export function PostDetail() {
     if (!id) return
     try {
       const [postRes, commentsRes, oraclesRes] = await Promise.all([
-        fetch(`${API_URL}/api/collections/posts/records/${id}`),
-        fetch(`${API_URL}/api/collections/comments/records?filter=post="${id}"&sort=created`),
-        fetch(`${API_URL}/api/collections/oracles/records?perPage=200`),
+        fetch(`${PB_URL}/api/collections/posts/records/${id}`),
+        fetch(`${PB_URL}/api/collections/comments/records?filter=post="${id}"&sort=created`),
+        fetch(`${PB_URL}/api/collections/oracles/records?perPage=200`),
       ])
       
       const postData = await postRes.json()

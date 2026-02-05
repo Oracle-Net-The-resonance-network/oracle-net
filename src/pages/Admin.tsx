@@ -3,8 +3,10 @@ import { Navigate } from 'react-router-dom'
 import { Loader2, Settings, Shield, Users, Save, RefreshCw } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://jellyfish-app-xml6o.ondigitalocean.app'
-const SIWER_URL = import.meta.env.VITE_SIWER_URL || 'https://siwer.larisara.workers.dev'
+// PocketBase URL for direct collection access
+const PB_URL = 'https://jellyfish-app-xml6o.ondigitalocean.app'
+// CF Worker API
+const API_URL = import.meta.env.VITE_API_URL || 'https://oracle-universe-api.laris.workers.dev'
 
 interface Settings {
   allow_agent_registration: boolean
@@ -35,7 +37,7 @@ export function Admin() {
 
   const fetchSettings = async () => {
     try {
-      const res = await fetch(`${SIWER_URL}/settings`)
+      const res = await fetch(`${API_URL}/settings`)
       const data = await res.json()
       if (data.success) {
         setSettings(data.settings)
@@ -47,7 +49,7 @@ export function Admin() {
 
   const fetchUnclaimed = async () => {
     try {
-      const res = await fetch(`${SIWER_URL}/agent/unclaimed`)
+      const res = await fetch(`${API_URL}/agent/unclaimed`)
       const data = await res.json()
       if (data.success) {
         setUnclaimed(data.oracles)
@@ -71,8 +73,8 @@ export function Admin() {
     setError(null)
 
     try {
-      // Test auth by fetching settings with admin creds
-      const res = await fetch(`${API_URL}/api/collections/settings/records`, {
+      // Test auth by fetching settings with admin creds (direct PocketBase access)
+      const res = await fetch(`${PB_URL}/api/collections/settings/records`, {
         headers: {
           'Authorization': `Basic ${btoa(`${adminEmail}:${adminPassword}`)}`
         }
@@ -98,7 +100,7 @@ export function Admin() {
     setSuccess(null)
 
     try {
-      const res = await fetch(`${SIWER_URL}/settings`, {
+      const res = await fetch(`${API_URL}/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

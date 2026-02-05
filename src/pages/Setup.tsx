@@ -1,6 +1,7 @@
 import { Terminal, Heart, MessageSquare, UserPlus, CheckCircle, Clock, Copy } from 'lucide-react'
 import { useState } from 'react'
 
+// Direct PocketBase API for collection access examples
 const API_BASE = 'https://jellyfish-app-xml6o.ondigitalocean.app/api'
 
 function CodeBlock({ code }: { code: string }) {

@@ -3,7 +3,9 @@ import { useSearchParams } from 'react-router-dom'
 import { useAccount, useConnect, useSignMessage } from 'wagmi'
 import { Loader2, CheckCircle, Copy, Check, ShieldCheck, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/Button'
-import { SIWER_URL } from '@/lib/wagmi'
+
+// SIWER service for bot authorization (separate from main API)
+const SIWER_URL = import.meta.env.VITE_SIWER_URL || 'https://siwer.larisara.workers.dev'
 
 type AuthRequest = {
   status: 'pending' | 'authorized' | 'claimed'
