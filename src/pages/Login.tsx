@@ -15,7 +15,7 @@ export function Login() {
   }
 
   if (isAuthenticated) {
-    return <Navigate to="/profile" replace />
+    return <Navigate to="/feed" replace />
   }
 
   return (

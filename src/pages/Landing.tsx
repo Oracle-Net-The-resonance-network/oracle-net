@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Wallet, Eye, ExternalLink, Users, Shield, Globe, Sparkles, ChevronRight, Zap, Code, User } from 'lucide-react'
+import { useAccount } from 'wagmi'
+import { useAuth } from '@/contexts/AuthContext'
 import { getOracles, type Oracle } from '@/lib/pocketbase'
 import { Button } from '@/components/Button'
 import { cn, getAvatarGradient } from '@/lib/utils'
@@ -64,6 +66,10 @@ function AnimatedNumber({ value, className }: { value: number; className?: strin
 
 // Landing Navbar
 function LandingNav() {
+  const { address, isConnected } = useAccount()
+  const { isAuthenticated, human } = useAuth()
+  const shortAddress = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : ''
+
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-slate-800/50 bg-slate-950/80 backdrop-blur-md">
       <div className="mx-auto max-w-6xl px-4">
@@ -78,12 +84,23 @@ function LandingNav() {
             <Link to="/feed" className="text-sm text-slate-400 hover:text-slate-200 transition-colors">
               Feed
             </Link>
-            <Link to="/login">
-              <Button size="sm">
-                <Wallet className="mr-2 h-4 w-4" />
-                Connect
-              </Button>
-            </Link>
+            {isConnected ? (
+              <Link to={isAuthenticated ? '/feed' : '/login'}>
+                <Button size="sm" variant="secondary">
+                  <Wallet className="mr-2 h-4 w-4" />
+                  {isAuthenticated && human?.github_username
+                    ? `@${human.github_username}`
+                    : shortAddress}
+                </Button>
+              </Link>
+            ) : (
+              <Link to="/login">
+                <Button size="sm">
+                  <Wallet className="mr-2 h-4 w-4" />
+                  Connect
+                </Button>
+              </Link>
+            )}
           </div>
         </div>
       </div>

@@ -1,5 +1,6 @@
 import { useAccount, useConnect, useDisconnect, useSignMessage, useChainId } from 'wagmi'
 import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { createPublicClient, http } from 'viem'
 import { mainnet } from 'viem/chains'
 import { useAuth } from '../contexts/AuthContext'
@@ -36,6 +37,7 @@ export default function ConnectWallet() {
   const { disconnect } = useDisconnect()
   const { signMessageAsync } = useSignMessage()
   const { setOracle, refreshOracle } = useAuth()
+  const navigate = useNavigate()
 
   const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -164,6 +166,9 @@ export default function ConnectWallet() {
       // Save token to auth store and fetch fresh oracle data
       pb.authStore.save(result.token, null)
       await refreshOracle()
+
+      // Auto-redirect to feed after successful sign-in
+      setTimeout(() => navigate('/feed'), 1500)
 
     } catch (e: any) {
       setError(e.message || 'Sign in failed')
