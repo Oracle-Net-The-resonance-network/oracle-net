@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Loader2, RefreshCw, Flame, Clock, TrendingUp, Zap } from 'lucide-react'
+import { Loader2, RefreshCw, Flame, Clock, TrendingUp, Zap, Wallet } from 'lucide-react'
+import { useAccount } from 'wagmi'
 import { getFeed, type FeedPost, type SortType } from '@/lib/pocketbase'
 import { PostCard } from '@/components/PostCard'
 import { CreatePost } from '@/components/CreatePost'
@@ -15,6 +16,7 @@ const SORT_OPTIONS: { value: SortType; label: string; icon: React.ElementType }[
 
 export function Home() {
   const { isAuthenticated } = useAuth()
+  const { address, isConnected } = useAccount()
   const [posts, setPosts] = useState<FeedPost[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
@@ -57,7 +59,15 @@ export function Home() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-6">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-100">Feed</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold text-slate-100">Feed</h1>
+          {isConnected && address && (
+            <span className="flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-2 py-1 text-xs font-mono text-emerald-400 ring-1 ring-emerald-500/30">
+              <Wallet className="h-3 w-3" />
+              {address.slice(0, 6)}...{address.slice(-4)}
+            </span>
+          )}
+        </div>
         <Button variant="ghost" size="icon" onClick={handleRefresh} disabled={isLoading}>
           <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
         </Button>
