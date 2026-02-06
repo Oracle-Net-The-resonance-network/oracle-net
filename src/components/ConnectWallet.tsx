@@ -1,14 +1,32 @@
 import { useAccount, useConnect, useDisconnect, useSignMessage, useChainId } from 'wagmi'
 import { useState, useEffect, useRef } from 'react'
-import { createSiweMessage } from 'viem/siwe'
+import { createPublicClient, http } from 'viem'
+import { mainnet } from 'viem/chains'
 import { useAuth } from '../contexts/AuthContext'
 import { API_URL } from '../lib/wagmi'
 import { pb } from '../lib/pocketbase'
+
+// Manual SIWE message builder (matches siwe-service/lib.ts)
+// viem's createSiweMessage doesn't allow \n in statement
+function buildSiweMessage(opts: {
+  domain: string; address: string; statement: string;
+  uri: string; version: string; chainId: number;
+  nonce: string; issuedAt?: string;
+}): string {
+  const issuedAt = opts.issuedAt || new Date().toISOString()
+  return `${opts.domain} wants you to sign in with your Ethereum account:\n${opts.address}\n\n${opts.statement}\n\nURI: ${opts.uri}\nVersion: ${opts.version}\nChain ID: ${opts.chainId}\nNonce: ${opts.nonce}\nIssued At: ${issuedAt}`
+}
+
+const ethClient = createPublicClient({
+  chain: mainnet,
+  transport: http('https://ethereum.publicnode.com'),
+})
 
 interface ChainlinkData {
   price: number
   roundId: string
   timestamp: number
+  blockNumber?: number
 }
 
 export default function ConnectWallet() {
@@ -80,17 +98,28 @@ export default function ConnectWallet() {
         throw new Error('Failed to get roundId')
       }
 
+      // Fetch block number from Ethereum via viem
+      const blockNumber = await ethClient.getBlockNumber()
+
       setChainlink({
         price: data.price,
         roundId: data.roundId,
         timestamp: data.timestamp,
+        blockNumber: Number(blockNumber),
       })
 
-      // Build SIWE message using viem
-      const message = createSiweMessage({
+      // Build SIWE message using viem (match siwe-service format)
+      const priceFormatted = new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(data.price)
+
+      const message = buildSiweMessage({
         domain: window.location.host,
         address: address as `0x${string}`,
-        statement: 'Sign in to Oracle Net',
+        statement: `Sign in to Oracle Net\nBTC price: ${priceFormatted}`,
         uri: window.location.origin,
         version: '1',
         chainId: chainId || 1,
@@ -185,9 +214,35 @@ export default function ConnectWallet() {
             {/* 1. Chainlink BTC/USD */}
             {chainlink && (
               <div className="rounded-lg bg-slate-900 p-4 ring-1 ring-slate-800">
-                <p className="text-xs text-slate-500">1. Chainlink BTC/USD</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-slate-500">1. Chainlink BTC/USD</p>
+                  <span className="text-xs text-slate-600">
+                    {Math.round((Date.now() / 1000 - chainlink.timestamp) / 60)}m ago
+                  </span>
+                </div>
                 <p className="text-2xl font-bold text-orange-400">{formatPrice(chainlink.price)}</p>
-                <p className="text-xs text-slate-500">{new Date(chainlink.timestamp * 1000).toISOString()}</p>
+                <div className="mt-1 flex items-center gap-2 text-xs">
+                  {chainlink.blockNumber && (
+                    <a
+                      href={`https://etherscan.io/block/${chainlink.blockNumber}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-mono text-slate-500 hover:text-orange-400 transition-colors"
+                    >
+                      Block #{chainlink.blockNumber.toLocaleString()}
+                    </a>
+                  )}
+                  <span className="text-slate-700">|</span>
+                  <span className="text-slate-600">{new Date(chainlink.timestamp * 1000).toISOString()}</span>
+                </div>
+                <a
+                  href="https://etherscan.io/address/0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1 inline-block text-xs font-mono text-slate-600 hover:text-orange-400 transition-colors"
+                >
+                  Contract: 0xF403...BeE88c
+                </a>
               </div>
             )}
 

@@ -19,9 +19,9 @@ export function Login() {
   }
 
   return (
-    <div className="mx-auto max-w-xl px-4 py-12">
-      <h1 className="text-3xl font-bold text-slate-100">SIWE + Chainlink</h1>
-      <p className="mt-1 text-slate-500">Sign-In With Ethereum using proof-of-time</p>
+    <div className="mx-auto max-w-md px-4 py-12">
+      <h1 className="text-3xl font-bold text-slate-100">Prove You're You</h1>
+      <p className="mt-1 text-slate-500">Sign with your wallet. Timestamped by Bitcoin.</p>
 
       <div className="mt-8">
         <ConnectWallet />
