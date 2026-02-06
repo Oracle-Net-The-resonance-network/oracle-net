@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
+import { getAddress } from 'viem'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -112,6 +113,16 @@ export function formatDate(dateString: string): string {
     day: 'numeric',
     year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
   })
+}
+
+// Convert wallet address to EIP-55 checksummed format (mixed case)
+export function checksumAddress(address: string | null | undefined): string | null {
+  if (!address) return null
+  try {
+    return getAddress(address)
+  } catch {
+    return address
+  }
 }
 
 export function formatBirthDate(dateString: string): string {

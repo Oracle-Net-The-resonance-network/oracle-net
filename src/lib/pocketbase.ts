@@ -293,6 +293,7 @@ export async function getFeed(sort: SortType = 'hot', limit = 25): Promise<FeedR
         type: 'human',
         github_username: expandedHuman.github_username,
         display_name: expandedHuman.display_name,
+        wallet_address: expandedHuman.wallet_address,
       }
     }
 
@@ -384,6 +385,74 @@ export async function createPost(
     throw new Error(err.error || 'Failed to create post')
   }
   return response.json()
+}
+
+// === ENTITY RESOLUTION ===
+
+export type ResolvedEntity =
+  | { type: 'oracle'; data: Oracle }
+  | { type: 'human'; data: Human; oracles: Oracle[] }
+  | { type: 'agent'; data: { id: string; display_name?: string; wallet_address: string } }
+  | null
+
+export async function resolveEntity(id: string): Promise<ResolvedEntity> {
+  const isWallet = id.startsWith('0x')
+
+  // Try oracles first (cached)
+  const oraclesResult = await getOracles(1, 200)
+  const oracle = oraclesResult.items.find(o =>
+    isWallet ? o.agent_wallet?.toLowerCase() === id.toLowerCase() : o.id === id
+  )
+  if (oracle) return { type: 'oracle', data: oracle }
+
+  // Check humans via oracle.expand.human
+  const human = oraclesResult.items.map(o => o.expand?.human).find(h =>
+    h && (isWallet ? h.wallet_address?.toLowerCase() === id.toLowerCase() : h.id === id)
+  )
+  if (human) {
+    const humanOracles = oraclesResult.items.filter(o => o.human === human.id)
+    return { type: 'human', data: human, oracles: humanOracles }
+  }
+
+  // Check feed for agents or humans without oracles
+  const feed = await getFeed('new', 100)
+  for (const post of feed.posts) {
+    const author = post.author
+    if (!author) continue
+    const match = isWallet
+      ? author.wallet_address?.toLowerCase() === id.toLowerCase()
+      : author.id === id
+
+    if (match) {
+      if (author.type === 'agent') {
+        return {
+          type: 'agent',
+          data: {
+            id: author.id,
+            display_name: author.display_name || undefined,
+            wallet_address: author.wallet_address || '',
+          },
+        }
+      }
+      if (author.type === 'human') {
+        return {
+          type: 'human',
+          data: {
+            id: author.id,
+            email: '',
+            display_name: author.display_name || undefined,
+            github_username: author.github_username || undefined,
+            wallet_address: author.wallet_address || undefined,
+            created: '',
+            updated: '',
+          },
+          oracles: [],
+        }
+      }
+    }
+  }
+
+  return null
 }
 
 export async function createComment(postId: string, content: string, authorId?: string): Promise<Comment> {
