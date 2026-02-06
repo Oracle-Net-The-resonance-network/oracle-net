@@ -1,34 +1,39 @@
 import { Link } from 'react-router-dom'
 import { MessageCircle, ArrowBigUp, ArrowBigDown } from 'lucide-react'
 import type { FeedPost } from '@/lib/pocketbase'
-import { upvotePost, downvotePost } from '@/lib/pocketbase'
+import { votePost } from '@/lib/pocketbase'
 import { formatDate, getAvatarGradient, getDisplayInfo, checksumAddress } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 interface PostCardProps {
   post: FeedPost
+  initialUserVote?: 'up' | 'down' | null
   onVoteUpdate?: (postId: string, upvotes: number, downvotes: number) => void
 }
 
-export function PostCard({ post, onVoteUpdate }: PostCardProps) {
+export function PostCard({ post, initialUserVote, onVoteUpdate }: PostCardProps) {
   const { isAuthenticated } = useAuth()
   const [isVoting, setIsVoting] = useState(false)
   const [localScore, setLocalScore] = useState(post.score)
   const [localUpvotes, setLocalUpvotes] = useState(post.upvotes)
   const [localDownvotes, setLocalDownvotes] = useState(post.downvotes)
-  const [userVote, setUserVote] = useState<'up' | 'down' | null>(null)
+  const [userVote, setUserVote] = useState<'up' | 'down' | null>(initialUserVote ?? null)
 
-  const handleUpvote = async () => {
+  useEffect(() => {
+    if (initialUserVote !== undefined) setUserVote(initialUserVote)
+  }, [initialUserVote])
+
+  const handleVote = async (direction: 'up' | 'down') => {
     if (!isAuthenticated || isVoting) return
     setIsVoting(true)
     try {
-      const result = await upvotePost(post.id)
+      const result = await votePost(post.id, direction)
       if (result.success) {
         setLocalUpvotes(result.upvotes)
         setLocalDownvotes(result.downvotes)
         setLocalScore(result.score)
-        setUserVote(userVote === 'up' ? null : 'up')
+        setUserVote(result.user_vote)
         onVoteUpdate?.(post.id, result.upvotes, result.downvotes)
       }
     } finally {
@@ -36,22 +41,8 @@ export function PostCard({ post, onVoteUpdate }: PostCardProps) {
     }
   }
 
-  const handleDownvote = async () => {
-    if (!isAuthenticated || isVoting) return
-    setIsVoting(true)
-    try {
-      const result = await downvotePost(post.id)
-      if (result.success) {
-        setLocalUpvotes(result.upvotes)
-        setLocalDownvotes(result.downvotes)
-        setLocalScore(result.score)
-        setUserVote(userVote === 'down' ? null : 'down')
-        onVoteUpdate?.(post.id, result.upvotes, result.downvotes)
-      }
-    } finally {
-      setIsVoting(false)
-    }
-  }
+  const handleUpvote = () => handleVote('up')
+  const handleDownvote = () => handleVote('down')
 
   const displayInfo = getDisplayInfo(post.author)
   const walletAddress = post.author?.wallet_address || post.expand?.author?.wallet_address
@@ -73,7 +64,7 @@ export function PostCard({ post, onVoteUpdate }: PostCardProps) {
               userVote === 'up'
                 ? 'bg-orange-500/20 text-orange-500'
                 : isAuthenticated
-                ? 'text-slate-500 hover:bg-orange-500/20 hover:text-orange-500'
+                ? 'cursor-pointer text-slate-500 hover:bg-orange-500/20 hover:text-orange-500'
                 : 'opacity-50 cursor-not-allowed'
             }`}
             title={isAuthenticated ? 'Upvote' : 'Login to vote'}
@@ -92,7 +83,7 @@ export function PostCard({ post, onVoteUpdate }: PostCardProps) {
               userVote === 'down'
                 ? 'bg-blue-500/20 text-blue-500'
                 : isAuthenticated
-                ? 'text-slate-500 hover:bg-blue-500/20 hover:text-blue-500'
+                ? 'cursor-pointer text-slate-500 hover:bg-blue-500/20 hover:text-blue-500'
                 : 'opacity-50 cursor-not-allowed'
             }`}
             title={isAuthenticated ? 'Downvote' : 'Login to vote'}

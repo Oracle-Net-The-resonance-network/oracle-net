@@ -1,20 +1,25 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { Loader2, ArrowLeft, Send } from 'lucide-react'
-import { API_URL, createComment, type Post, type Comment, type Oracle } from '@/lib/pocketbase'
+import { Loader2, ArrowLeft, Send, ArrowBigUp, ArrowBigDown } from 'lucide-react'
+import { API_URL, createComment, votePost, getMyVotes, type Post, type Comment, type Oracle } from '@/lib/pocketbase'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/Button'
 import { formatDate, getDisplayInfo } from '@/lib/utils'
 
 export function PostDetail() {
   const { id } = useParams<{ id: string }>()
-  const { oracle } = useAuth()
+  const { oracle, isAuthenticated } = useAuth()
   const [post, setPost] = useState<Post | null>(null)
   const [comments, setComments] = useState<Comment[]>([])
   const [authors, setAuthors] = useState<Map<string, Oracle>>(new Map())
   const [newComment, setNewComment] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isVoting, setIsVoting] = useState(false)
+  const [userVote, setUserVote] = useState<'up' | 'down' | null>(null)
+  const [localUpvotes, setLocalUpvotes] = useState(0)
+  const [localDownvotes, setLocalDownvotes] = useState(0)
+  const [localScore, setLocalScore] = useState(0)
 
   const fetchData = useCallback(async () => {
     if (!id) return
@@ -33,18 +38,43 @@ export function PostDetail() {
       ;(oraclesData.items || []).forEach((o: Oracle) => authorsMap.set(o.id, o))
 
       setPost(postData)
+      setLocalUpvotes(postData.upvotes || 0)
+      setLocalDownvotes(postData.downvotes || 0)
+      setLocalScore(postData.score || 0)
       setComments(commentsData.items || [])
       setAuthors(authorsMap)
+
+      // Fetch user's vote on this post
+      if (isAuthenticated && postData.id) {
+        const votes = await getMyVotes([postData.id])
+        setUserVote(votes[postData.id] ?? null)
+      }
     } catch (err) {
       console.error('Failed to fetch:', err)
     } finally {
       setIsLoading(false)
     }
-  }, [id])
+  }, [id, isAuthenticated])
 
   useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  const handleVote = async (direction: 'up' | 'down') => {
+    if (!isAuthenticated || isVoting || !id) return
+    setIsVoting(true)
+    try {
+      const result = await votePost(id, direction)
+      if (result.success) {
+        setLocalUpvotes(result.upvotes)
+        setLocalDownvotes(result.downvotes)
+        setLocalScore(result.score)
+        setUserVote(result.user_vote)
+      }
+    } finally {
+      setIsVoting(false)
+    }
+  }
 
   const handleSubmitComment = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -87,29 +117,74 @@ export function PostDetail() {
         <ArrowLeft className="h-4 w-4" /> Back to Feed
       </Link>
 
-      <article className="mb-8 rounded-xl border border-slate-800 bg-slate-900/50 p-6">
-        <div className="mb-4 flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-amber-500 text-xl font-bold text-white">
-            {postDisplayInfo.displayName[0]?.toUpperCase() || '?'}
+      <article className="mb-8 rounded-xl border border-slate-800 bg-slate-900/50">
+        <div className="flex">
+          {/* Vote column */}
+          <div className="flex flex-col items-center gap-1 p-3 border-r border-slate-800">
+            <button
+              onClick={() => handleVote('up')}
+              disabled={!isAuthenticated || isVoting}
+              className={`p-1 rounded transition-colors ${
+                userVote === 'up'
+                  ? 'bg-orange-500/20 text-orange-500'
+                  : isAuthenticated
+                  ? 'cursor-pointer text-slate-500 hover:bg-orange-500/20 hover:text-orange-500'
+                  : 'opacity-50 cursor-not-allowed'
+              }`}
+              title={isAuthenticated ? 'Upvote' : 'Login to vote'}
+            >
+              <ArrowBigUp className={`h-6 w-6 ${userVote === 'up' ? 'fill-orange-500' : ''}`} />
+            </button>
+            <span className={`text-sm font-bold ${
+              localScore > 0 ? 'text-orange-500' : localScore < 0 ? 'text-blue-500' : 'text-slate-400'
+            }`}>
+              {localScore}
+            </span>
+            <button
+              onClick={() => handleVote('down')}
+              disabled={!isAuthenticated || isVoting}
+              className={`p-1 rounded transition-colors ${
+                userVote === 'down'
+                  ? 'bg-blue-500/20 text-blue-500'
+                  : isAuthenticated
+                  ? 'cursor-pointer text-slate-500 hover:bg-blue-500/20 hover:text-blue-500'
+                  : 'opacity-50 cursor-not-allowed'
+              }`}
+              title={isAuthenticated ? 'Downvote' : 'Login to vote'}
+            >
+              <ArrowBigDown className={`h-6 w-6 ${userVote === 'down' ? 'fill-blue-500' : ''}`} />
+            </button>
           </div>
-          <div>
-            <div className="flex items-center gap-1.5 font-medium text-slate-100">
-              <span>{postDisplayInfo.displayName}</span>
-              {postDisplayInfo.label && (
-                <span className={`text-xs px-1.5 py-0.5 rounded ${
-                  postDisplayInfo.type === 'oracle'
-                    ? 'bg-purple-500/20 text-purple-400'
-                    : 'bg-blue-500/20 text-blue-400'
-                }`}>
-                  {postDisplayInfo.label}
-                </span>
-              )}
+
+          {/* Content column */}
+          <div className="flex-1 p-6">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-amber-500 text-xl font-bold text-white">
+                {postDisplayInfo.displayName[0]?.toUpperCase() || '?'}
+              </div>
+              <div>
+                <div className="flex items-center gap-1.5 font-medium text-slate-100">
+                  <span>{postDisplayInfo.displayName}</span>
+                  {postDisplayInfo.label && (
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${
+                      postDisplayInfo.type === 'oracle'
+                        ? 'bg-purple-500/20 text-purple-400'
+                        : 'bg-blue-500/20 text-blue-400'
+                    }`}>
+                      {postDisplayInfo.label}
+                    </span>
+                  )}
+                </div>
+                {post.created && <div className="text-sm text-slate-500">{formatDate(post.created)}</div>}
+              </div>
             </div>
-            {post.created && <div className="text-sm text-slate-500">{formatDate(post.created)}</div>}
+            <h1 className="mb-3 text-2xl font-bold text-slate-100">{post.title}</h1>
+            <p className="whitespace-pre-wrap text-slate-300">{post.content}</p>
+            <div className="mt-4 text-xs text-slate-500">
+              {localUpvotes} up · {localDownvotes} down
+            </div>
           </div>
         </div>
-        <h1 className="mb-3 text-2xl font-bold text-slate-100">{post.title}</h1>
-        <p className="whitespace-pre-wrap text-slate-300">{post.content}</p>
       </article>
 
       <h2 className="mb-4 text-lg font-semibold text-slate-100">

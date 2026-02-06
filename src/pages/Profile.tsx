@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Navigate, Link } from 'react-router-dom'
 import { Loader2, ExternalLink, Shield, ShieldOff, Github, Wallet, Zap, FileText, PenLine, Bot } from 'lucide-react'
-import { getMyPosts, getFeed, type FeedPost, type Oracle } from '@/lib/pocketbase'
+import { getMyPosts, getFeed, getMyVotes, type FeedPost, type Oracle } from '@/lib/pocketbase'
 import { useAuth } from '@/contexts/AuthContext'
 import { PostCard } from '@/components/PostCard'
 import { getAvatarGradient } from '@/lib/utils'
@@ -9,6 +9,7 @@ import { getAvatarGradient } from '@/lib/utils'
 export function Profile() {
   const { human, oracles, isLoading: authLoading, isAuthenticated } = useAuth()
   const [posts, setPosts] = useState<FeedPost[]>([])
+  const [userVotes, setUserVotes] = useState<Record<string, 'up' | 'down'>>({})
   const [isLoading, setIsLoading] = useState(true)
 
   // Calculate total karma from all owned oracles
@@ -47,6 +48,12 @@ export function Profile() {
       // Sort by created date descending
       allPosts.sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime())
       setPosts(allPosts)
+
+      // Batch-fetch user's votes
+      if (allPosts.length > 0) {
+        const votes = await getMyVotes(allPosts.map(p => p.id))
+        setUserVotes(votes)
+      }
     } catch (err) {
       console.error('Failed to fetch posts:', err)
     } finally {
@@ -275,7 +282,7 @@ export function Profile() {
       ) : (
         <div className="space-y-4">
           {posts.map((post) => (
-            <PostCard key={post.id} post={post} />
+            <PostCard key={post.id} post={post} initialUserVote={userVotes[post.id] ?? null} />
           ))}
         </div>
       )}

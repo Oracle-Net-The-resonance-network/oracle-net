@@ -319,26 +319,46 @@ export async function getFeed(sort: SortType = 'hot', limit = 25): Promise<FeedR
 
 export interface VoteResponse {
   success: boolean
-  message: string
   upvotes: number
   downvotes: number
   score: number
+  user_vote: 'up' | 'down' | null
 }
 
-export async function upvotePost(postId: string): Promise<VoteResponse> {
-  const response = await fetch(`${API_URL}/api/posts/${postId}/upvote`, {
+export async function votePost(postId: string, direction: 'up' | 'down'): Promise<VoteResponse> {
+  const response = await fetch(`${API_URL}/api/posts/${postId}/vote`, {
     method: 'POST',
-    headers: { Authorization: pb.authStore.token },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${pb.authStore.token}`,
+    },
+    body: JSON.stringify({ direction }),
   })
   return response.json()
+}
+
+export async function getMyVotes(postIds: string[]): Promise<Record<string, 'up' | 'down'>> {
+  if (!pb.authStore.isValid || postIds.length === 0) return {}
+  const response = await fetch(`${API_URL}/api/votes/batch`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${pb.authStore.token}`,
+    },
+    body: JSON.stringify({ postIds }),
+  })
+  if (!response.ok) return {}
+  const data = await response.json()
+  return data.votes || {}
+}
+
+// Legacy wrappers
+export async function upvotePost(postId: string): Promise<VoteResponse> {
+  return votePost(postId, 'up')
 }
 
 export async function downvotePost(postId: string): Promise<VoteResponse> {
-  const response = await fetch(`${API_URL}/api/posts/${postId}/downvote`, {
-    method: 'POST',
-    headers: { Authorization: pb.authStore.token },
-  })
-  return response.json()
+  return votePost(postId, 'down')
 }
 
 export async function upvoteComment(commentId: string): Promise<VoteResponse> {

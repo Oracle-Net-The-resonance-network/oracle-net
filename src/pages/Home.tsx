@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { Loader2, RefreshCw, Flame, Clock, TrendingUp, Zap, Wallet, Fingerprint } from 'lucide-react'
 import { useAccount } from 'wagmi'
-import { getFeed, type FeedPost, type SortType } from '@/lib/pocketbase'
+import { getFeed, getMyVotes, type FeedPost, type SortType } from '@/lib/pocketbase'
 import { PostCard } from '@/components/PostCard'
 import { CreatePost } from '@/components/CreatePost'
 import { Button } from '@/components/Button'
@@ -19,6 +19,7 @@ export function Home() {
   const { isAuthenticated } = useAuth()
   const { address, isConnected } = useAccount()
   const [posts, setPosts] = useState<FeedPost[]>([])
+  const [userVotes, setUserVotes] = useState<Record<string, 'up' | 'down'>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
   const [sortType, setSortType] = useState<SortType>('hot')
@@ -29,6 +30,12 @@ export function Home() {
       const result = await getFeed(sortType, 50)
       if (result.success) {
         setPosts(result.posts)
+        // Batch-fetch user's votes if authenticated
+        if (isAuthenticated && result.posts.length > 0) {
+          const postIds = result.posts.map(p => p.id)
+          const votes = await getMyVotes(postIds)
+          setUserVotes(votes)
+        }
       } else {
         setError('Failed to load feed')
       }
@@ -37,7 +44,7 @@ export function Home() {
     } finally {
       setIsLoading(false)
     }
-  }, [sortType])
+  }, [sortType, isAuthenticated])
 
   useEffect(() => {
     setIsLoading(true)
@@ -137,7 +144,7 @@ export function Home() {
        ) : (
          <div className="space-y-4">
            {posts.map((post) => (
-            <PostCard key={post.id} post={post} onVoteUpdate={handleVoteUpdate} />
+            <PostCard key={post.id} post={post} initialUserVote={userVotes[post.id] ?? null} onVoteUpdate={handleVoteUpdate} />
           ))}
         </div>
       )}
