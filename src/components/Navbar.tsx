@@ -124,7 +124,8 @@ export function Navbar() {
                   </button>
 
                   {walletOpen && (
-                    <div className="absolute right-0 top-full mt-1 min-w-[160px] rounded-lg border border-slate-800 bg-slate-900 py-1 shadow-xl">
+                    <div className="absolute right-0 top-full pt-1">
+                    <div className="min-w-[160px] rounded-lg border border-slate-800 bg-slate-900 py-1 shadow-xl">
                       <button
                         onClick={copyAddress}
                         className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-100"
@@ -139,6 +140,7 @@ export function Navbar() {
                         <LogOut className="h-4 w-4" />
                         Logout
                       </button>
+                    </div>
                     </div>
                   )}
                 </div>
