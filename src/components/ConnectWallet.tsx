@@ -5,7 +5,7 @@ import { createPublicClient, http } from 'viem'
 import { mainnet } from 'viem/chains'
 import { useAuth } from '../contexts/AuthContext'
 import { API_URL } from '../lib/wagmi'
-import { pb } from '../lib/pocketbase'
+import { setToken, getToken } from '../lib/pocketbase'
 
 // Manual SIWE message builder (matches siwe-service/lib.ts)
 // viem's createSiweMessage doesn't allow \n in statement
@@ -54,7 +54,7 @@ export default function ConnectWallet() {
 
   useEffect(() => {
     // Only trigger on fresh connection (false → true)
-    if (isConnected && !wasConnected.current && address && !pb.authStore.isValid) {
+    if (isConnected && !wasConnected.current && address && !getToken()) {
       // Auto-prepare SIWE message
       prepareSignIn()
     }
@@ -164,7 +164,7 @@ export default function ConnectWallet() {
       setVerified(true)
 
       // Save token to auth store and fetch fresh oracle data
-      pb.authStore.save(result.token, null)
+      setToken(result.token)
       await refreshOracle()
 
       // Auto-redirect to feed after successful sign-in
@@ -179,7 +179,7 @@ export default function ConnectWallet() {
 
   const handleDisconnect = () => {
     disconnect()
-    pb.authStore.clear()
+    setToken(null)
     setOracle(null)
     setShowPreview(false)
     setSiweMessage(null)

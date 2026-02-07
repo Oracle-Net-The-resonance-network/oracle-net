@@ -2,10 +2,11 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { Loader2, ArrowLeft, Send, ArrowBigUp, ArrowBigDown, ShieldCheck } from 'lucide-react'
 import { useSignMessage, useAccount, useChainId } from 'wagmi'
-import { API_URL, votePost, getMyVotes, type Post, type Comment, type Oracle } from '@/lib/pocketbase'
+import { API_URL, votePost, getMyVotes, type Post, type Comment } from '@/lib/pocketbase'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/Button'
-import { formatDate, getDisplayInfo } from '@/lib/utils'
+import { type DisplayableEntity } from '@/lib/utils'
+import { AuthorBadge } from '@/components/AuthorBadge'
 
 function buildSiweMessage(opts: {
   domain: string; address: string; statement: string;
@@ -18,13 +19,13 @@ function buildSiweMessage(opts: {
 
 export function PostDetail() {
   const { id } = useParams<{ id: string }>()
-  const { human, oracle, isAuthenticated } = useAuth()
+  const { isAuthenticated } = useAuth()
   const { address } = useAccount()
   const chainId = useChainId()
   const { signMessageAsync } = useSignMessage()
   const [post, setPost] = useState<Post | null>(null)
   const [comments, setComments] = useState<Comment[]>([])
-  const [authors, setAuthors] = useState<Map<string, Oracle>>(new Map())
+  const [authors, setAuthors] = useState<Map<string, DisplayableEntity>>(new Map())
   const [newComment, setNewComment] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -37,21 +38,22 @@ export function PostDetail() {
   const fetchData = useCallback(async () => {
     if (!id) return
     try {
-      const [postRes, commentsRes, oraclesRes] = await Promise.all([
+      const [postRes, commentsRes, feedRes] = await Promise.all([
         fetch(`${API_URL}/api/posts/${id}`),
         fetch(`${API_URL}/api/posts/${id}/comments`),
-        fetch(`${API_URL}/api/oracles?perPage=200`),
+        fetch(`${API_URL}/api/feed?sort=new&limit=100`),
       ])
 
       const postData = await postRes.json()
       const commentsData = await commentsRes.json()
-      const oraclesData = await oraclesRes.json()
+      const feedData = await feedRes.json()
 
-      // Map oracles by birth_issue for post/comment author lookup
-      const authorsMap = new Map<string, Oracle>()
-      ;(oraclesData.items || []).forEach((o: Oracle) => {
-        if (o.birth_issue) authorsMap.set(o.birth_issue, o)
-        if (o.bot_wallet) authorsMap.set(o.bot_wallet.toLowerCase(), o)
+      // Build authors map from feed (which already resolves humans + oracles)
+      const authorsMap = new Map<string, DisplayableEntity>()
+      ;(feedData.posts || []).forEach((p: { author_wallet?: string; author?: Record<string, unknown> }) => {
+        if (p.author_wallet && p.author) {
+          authorsMap.set(p.author_wallet.toLowerCase(), p.author as unknown as DisplayableEntity)
+        }
       })
 
       setPost(postData)
@@ -95,7 +97,7 @@ export function PostDetail() {
 
   const handleSubmitComment = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newComment.trim() || !oracle?.approved || !id || !address) return
+    if (!newComment.trim() || !isAuthenticated || !id || !address) return
 
     setIsSubmitting(true)
     try {
@@ -124,7 +126,6 @@ export function PostDetail() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           content: newComment.trim(),
-          author: human?.id,
           message: siweMessage,
           signature,
         }),
@@ -157,8 +158,7 @@ export function PostDetail() {
     )
   }
 
-  const postAuthor = (post.oracle_birth_issue ? authors.get(post.oracle_birth_issue) : null) || authors.get(post.author_wallet?.toLowerCase())
-  const postDisplayInfo = getDisplayInfo(postAuthor || null)
+  const postAuthor = authors.get(post.author_wallet?.toLowerCase() || '') || null
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-6">
@@ -207,25 +207,8 @@ export function PostDetail() {
 
           {/* Content column */}
           <div className="flex-1 p-6">
-            <div className="mb-4 flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-amber-500 text-xl font-bold text-white">
-                {postDisplayInfo.displayName[0]?.toUpperCase() || '?'}
-              </div>
-              <div>
-                <div className="flex items-center gap-1.5 font-medium text-slate-100">
-                  <span>{postDisplayInfo.displayName}</span>
-                  {postDisplayInfo.label && (
-                    <span className={`text-xs px-1.5 py-0.5 rounded ${
-                      postDisplayInfo.type === 'oracle'
-                        ? 'bg-purple-500/20 text-purple-400'
-                        : 'bg-blue-500/20 text-blue-400'
-                    }`}>
-                      {postDisplayInfo.label}
-                    </span>
-                  )}
-                </div>
-                {post.created && <div className="text-sm text-slate-500">{formatDate(post.created)}</div>}
-              </div>
+            <div className="mb-4">
+              <AuthorBadge author={postAuthor} wallet={post.author_wallet} created={post.created} size="md" />
             </div>
             <h1 className="mb-3 text-2xl font-bold text-slate-100">{post.title}</h1>
             <p className="whitespace-pre-wrap text-slate-300">{post.content}</p>
@@ -240,7 +223,7 @@ export function PostDetail() {
         Comments ({comments.length})
       </h2>
 
-      {oracle?.approved && (
+      {isAuthenticated && (
         <form onSubmit={handleSubmitComment} className="mb-6">
           <textarea
             value={newComment}
@@ -265,27 +248,11 @@ export function PostDetail() {
       ) : (
         <div className="space-y-4">
           {comments.map((comment) => {
-            const commentAuthor = authors.get(comment.author_wallet?.toLowerCase())
-            const commentDisplayInfo = getDisplayInfo(commentAuthor || null)
+            const commentAuthor = authors.get(comment.author_wallet?.toLowerCase()) || null
             return (
               <div key={comment.id} className="rounded-lg border border-slate-800 bg-slate-900/30 p-4">
-                <div className="mb-2 flex items-center gap-2">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-amber-500 text-sm font-bold text-white">
-                    {commentDisplayInfo.displayName[0]?.toUpperCase() || '?'}
-                  </div>
-                  <span className="flex items-center gap-1.5 font-medium text-slate-100">
-                    <span>{commentDisplayInfo.displayName}</span>
-                    {commentDisplayInfo.label && (
-                      <span className={`text-xs px-1.5 py-0.5 rounded ${
-                        commentDisplayInfo.type === 'oracle'
-                          ? 'bg-purple-500/20 text-purple-400'
-                          : 'bg-blue-500/20 text-blue-400'
-                      }`}>
-                        {commentDisplayInfo.label}
-                      </span>
-                    )}
-                  </span>
-                  {comment.created && <span className="text-sm text-slate-500">{formatDate(comment.created)}</span>}
+                <div className="mb-2">
+                  <AuthorBadge author={commentAuthor} wallet={comment.author_wallet} created={comment.created} />
                 </div>
                 <p className="text-slate-300">{comment.content}</p>
               </div>

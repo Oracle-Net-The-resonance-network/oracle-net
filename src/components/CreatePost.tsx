@@ -19,10 +19,8 @@ interface CreatePostProps {
   onPostCreated?: () => void
 }
 
-type AuthorOption = { type: 'human'; id: string; name: string } | { type: 'oracle'; id: string; name: string }
-
 export function CreatePost({ onPostCreated }: CreatePostProps) {
-  const { human, oracles } = useAuth()
+  const { human } = useAuth()
   const { address } = useAccount()
   const chainId = useChainId()
   const { signMessageAsync } = useSignMessage()
@@ -30,25 +28,10 @@ export function CreatePost({ onPostCreated }: CreatePostProps) {
   const [content, setContent] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
-  const [selectedAuthor, setSelectedAuthor] = useState<AuthorOption | null>(null)
 
   // Can post if has github verified
-  const approvedOracles = oracles.filter(o => o.approved)
   const canPost = !!human?.github_username
-
-  // Build author options: Human first, then Oracles
-  const authorOptions: AuthorOption[] = []
-  if (human) {
-    authorOptions.push({ type: 'human', id: human.id, name: human.github_username || human.display_name || 'Human' })
-  }
-  approvedOracles.forEach(o => {
-    authorOptions.push({ type: 'oracle', id: o.id, name: o.oracle_name || o.name })
-  })
-
-  // Auto-select human (first option)
-  if (!selectedAuthor && authorOptions.length > 0) {
-    setSelectedAuthor(authorOptions[0])
-  }
+  const displayName = human?.github_username || human?.display_name || 'Human'
 
   if (!canPost) {
     return null
@@ -56,7 +39,7 @@ export function CreatePost({ onPostCreated }: CreatePostProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!title.trim() || !content.trim() || !selectedAuthor || !address) return
+    if (!title.trim() || !content.trim() || !address) return
 
     setIsSubmitting(true)
     setError('')
@@ -83,18 +66,12 @@ export function CreatePost({ onPostCreated }: CreatePostProps) {
       const signature = await signMessageAsync({ message: siweMessage })
 
       // 4. Submit with SIWE auth in body
-      const postData: Record<string, string> = {
+      // Wallet = identity: author_wallet is decoded from the SIWE signature server-side
+      const postData = {
         title: title.trim(),
         content: content.trim(),
         message: siweMessage,
         signature,
-      }
-
-      if (selectedAuthor.type === 'human') {
-        postData.author = selectedAuthor.id
-      } else {
-        postData.author = human!.id
-        postData.oracle = selectedAuthor.id
       }
 
       const res = await fetch(`${API_URL}/api/posts`, {
@@ -118,46 +95,19 @@ export function CreatePost({ onPostCreated }: CreatePostProps) {
     }
   }
 
-  const displayAuthor = selectedAuthor || authorOptions[0]
-
   return (
     <form
       onSubmit={handleSubmit}
       className="rounded-xl border border-slate-800 bg-slate-900/50 p-4"
     >
       <div className="mb-3 flex items-center gap-3">
-        <div className={`flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br ${getAvatarGradient(displayAuthor?.name || 'H')} text-lg font-bold text-white`}>
-          {displayAuthor?.name[0]?.toUpperCase() || 'H'}
+        <div className={`flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br ${getAvatarGradient(displayName)} text-lg font-bold text-white`}>
+          {displayName[0]?.toUpperCase() || 'H'}
         </div>
-        <div className="flex items-center gap-2">
-          {authorOptions.length > 1 ? (
-            <select
-              value={selectedAuthor?.id || ''}
-              onChange={(e) => {
-                const author = authorOptions.find(a => a.id === e.target.value)
-                if (author) setSelectedAuthor(author)
-              }}
-              className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1 text-sm text-slate-100 focus:border-orange-500 focus:outline-none"
-            >
-              {authorOptions.map(a => (
-                <option key={a.id} value={a.id}>
-                  {a.type === 'human' ? `@${a.name}` : a.name}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <span className="font-medium text-slate-100">
-              {displayAuthor?.type === 'human' ? `@${displayAuthor.name}` : displayAuthor?.name}
-            </span>
-          )}
-          <span className={`text-xs px-1.5 py-0.5 rounded ${
-            displayAuthor?.type === 'human'
-              ? 'bg-emerald-500/20 text-emerald-400'
-              : 'bg-purple-500/20 text-purple-400'
-          }`}>
-            {displayAuthor?.type === 'human' ? 'Human' : 'Oracle'}
-          </span>
-        </div>
+        <span className="font-medium text-slate-100">@{displayName}</span>
+        <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400">
+          Human
+        </span>
       </div>
 
       <input

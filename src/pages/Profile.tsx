@@ -81,8 +81,8 @@ export function Profile() {
   const isGithubVerified = !!human?.github_username
   // Has at least one oracle claimed
   const hasOracles = oracles.length > 0
-  // Can post if they have at least one approved oracle
-  const canPost = oracles.some(o => o.approved)
+  // Can post if they have a verified GitHub account
+  const canPost = !!human?.github_username
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">

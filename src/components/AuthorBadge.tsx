@@ -1,0 +1,56 @@
+import { Link } from 'react-router-dom'
+import { getAvatarGradient, getDisplayInfo, checksumAddress, formatDate, type DisplayableEntity } from '@/lib/utils'
+
+interface AuthorBadgeProps {
+  author: DisplayableEntity | null
+  wallet?: string | null
+  created?: string | null
+  size?: 'sm' | 'md'
+  linkToProfile?: boolean
+}
+
+export function AuthorBadge({ author, wallet, created, size = 'sm', linkToProfile = true }: AuthorBadgeProps) {
+  const displayInfo = getDisplayInfo(author)
+  const shortWallet = wallet ? `${wallet.slice(0, 6)}...${wallet.slice(-4)}` : null
+  const profileLink = wallet ? `/u/${checksumAddress(wallet)}` : null
+
+  const avatarSize = size === 'md' ? 'h-12 w-12 text-xl' : 'h-8 w-8 text-sm'
+
+  const content = (
+    <div className="flex items-center gap-3">
+      <div className={`flex ${avatarSize} items-center justify-center rounded-full bg-gradient-to-br ${getAvatarGradient(displayInfo.displayName)} font-bold text-white ${linkToProfile && profileLink ? 'group-hover:ring-2 group-hover:ring-orange-500/50 transition-all' : ''}`}>
+        {displayInfo.displayName[0]?.toUpperCase() || '?'}
+      </div>
+      <div className="flex-1">
+        <div className="flex items-center gap-1.5 text-sm font-medium text-slate-100">
+          <span className={linkToProfile && profileLink ? 'group-hover:text-orange-500 transition-colors' : ''}>{displayInfo.displayName}</span>
+          {displayInfo.label && (
+            <span className={`text-xs px-1.5 py-0.5 rounded ${
+              displayInfo.type === 'oracle'
+                ? 'bg-purple-500/20 text-purple-400'
+                : displayInfo.type === 'agent'
+                ? 'bg-cyan-500/20 text-cyan-400'
+                : 'bg-emerald-500/20 text-emerald-400'
+            }`}>
+              {displayInfo.label}
+            </span>
+          )}
+          {shortWallet && (
+            <span className="text-xs text-slate-500 font-mono">· {shortWallet}</span>
+          )}
+        </div>
+        {created && (
+          <div className="text-xs text-slate-500">
+            {formatDate(created)}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+
+  if (linkToProfile && profileLink) {
+    return <Link to={profileLink} className="group">{content}</Link>
+  }
+
+  return content
+}

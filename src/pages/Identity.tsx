@@ -509,10 +509,66 @@ EOF
 export ORACLE_HUMAN_PK=<my-private-key>
 bun scripts/oraclenet.ts assign` : ''
 
+  // Claim params from URL
+  const claimBirth = searchParams.get('birth')
+  const claimName = searchParams.get('name')
+  const claimBot = searchParams.get('bot')
+  const hasClaim = !!(claimBirth || claimName || claimBot)
+
   // Not connected
   if (!isConnected) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-12">
+        {/* Claim Summary Panel — shown when URL params present */}
+        {hasClaim && (
+          <div className="mb-6 rounded-xl border border-orange-500/30 bg-gradient-to-b from-orange-500/10 to-transparent p-5">
+            <div className="flex items-start gap-3">
+              <div className="rounded-full bg-orange-500/20 p-2 mt-0.5">
+                <Fingerprint className="h-5 w-5 text-orange-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h2 className="text-lg font-semibold text-orange-400">
+                  Claiming: {claimName || 'Oracle'}
+                </h2>
+                {claimBirth && (
+                  <div className="mt-1 text-sm text-slate-400">
+                    Birth Issue:{' '}
+                    <a
+                      href={`https://github.com/${DEFAULT_BIRTH_REPO}/issues/${claimBirth}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-orange-400 hover:text-orange-300 transition-colors"
+                    >
+                      oracle-v2#{claimBirth}
+                    </a>
+                    {birthIssueData && (
+                      <span className="text-slate-500">
+                        {' '}by{' '}
+                        <a
+                          href={`https://github.com/${birthIssueData.author}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-orange-400 hover:text-orange-300"
+                        >
+                          @{birthIssueData.author}
+                        </a>
+                      </span>
+                    )}
+                  </div>
+                )}
+                {claimBot && (
+                  <div className="mt-1 text-sm text-slate-500 font-mono">
+                    Bot Wallet: {claimBot.slice(0, 10)}...{claimBot.slice(-4)}
+                  </div>
+                )}
+                <p className="mt-3 text-sm text-slate-500">
+                  Connect wallet to begin ↓
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-8 text-center">
           <div className="mb-4 flex justify-center">
             <div className="rounded-full bg-gradient-to-r from-orange-500 to-amber-500 p-3">
@@ -520,7 +576,11 @@ bun scripts/oraclenet.ts assign` : ''
             </div>
           </div>
           <h1 className="text-2xl font-bold text-slate-100">Oracle Identity</h1>
-          <p className="mt-2 text-slate-400">Connect your wallet to verify your Oracle identity</p>
+          <p className="mt-2 text-slate-400">
+            {hasClaim
+              ? `Connect your wallet to claim ${claimName || 'your Oracle'}`
+              : 'Connect your wallet to verify your Oracle identity'}
+          </p>
           <Button onClick={handleConnect} disabled={isConnecting} className="mt-6">
             {isConnecting ? (
               <>
@@ -554,6 +614,17 @@ bun scripts/oraclenet.ts assign` : ''
             Disconnect
           </button>
         </div>
+
+        {/* Claim Context Banner — shown when URL params present and not yet verified */}
+        {hasClaim && !isFullyVerified && !verifySuccess && (
+          <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 px-4 py-3 flex items-center gap-3">
+            <Fingerprint className="h-4 w-4 text-orange-400 shrink-0" />
+            <span className="text-sm text-orange-300">
+              Claiming <span className="font-semibold">{claimName || 'Oracle'}</span>
+              {claimBirth && <span className="text-slate-500"> · oracle-v2#{claimBirth}</span>}
+            </span>
+          </div>
+        )}
 
         {/* Fully Verified Banner */}
         {isFullyVerified && (

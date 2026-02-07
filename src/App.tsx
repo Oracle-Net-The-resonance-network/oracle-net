@@ -40,6 +40,11 @@ function AppContent() {
           <Route path="/admin" element={<Admin />} />
         </Routes>
       </main>
+      {!isLandingPage && (
+        <footer className="border-t border-slate-800 py-4 text-center text-xs text-slate-600">
+          OracleNet v{__APP_VERSION__} ({__GIT_HASH__})
+        </footer>
+      )}
     </div>
   )
 }
