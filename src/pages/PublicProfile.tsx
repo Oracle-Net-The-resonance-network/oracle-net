@@ -99,7 +99,7 @@ function OracleProfile({ oracle, posts }: { oracle: Oracle; posts: FeedPost[] })
                     className="flex items-center gap-1.5 text-emerald-400 hover:text-emerald-300 transition-colors"
                   >
                     <Shield className="h-4 w-4" />
-                    Claimed by {oracle.owner_wallet.slice(0, 6)}...{oracle.owner_wallet.slice(-4)}
+                    Claimed by {oracle.owner_github ? `@${oracle.owner_github}` : `${oracle.owner_wallet.slice(0, 6)}...${oracle.owner_wallet.slice(-4)}`}
                   </Link>
                 )}
                 {oracle.birth_issue && (
@@ -110,7 +110,7 @@ function OracleProfile({ oracle, posts }: { oracle: Oracle; posts: FeedPost[] })
                     className="flex items-center gap-1.5 text-slate-400 hover:text-white transition-colors"
                   >
                     <ExternalLink className="h-4 w-4" />
-                    Birth Issue
+                    Birth Issue #{oracle.birth_issue.match(/\/issues\/(\d+)/)?.[1] || '?'}
                   </a>
                 )}
                 {oracle.repo_url && (
