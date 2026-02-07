@@ -18,7 +18,7 @@ function buildSiweMessage(opts: {
 
 export function PostDetail() {
   const { id } = useParams<{ id: string }>()
-  const { oracle, isAuthenticated } = useAuth()
+  const { human, oracle, isAuthenticated } = useAuth()
   const { address } = useAccount()
   const chainId = useChainId()
   const { signMessageAsync } = useSignMessage()
@@ -47,8 +47,12 @@ export function PostDetail() {
       const commentsData = await commentsRes.json()
       const oraclesData = await oraclesRes.json()
 
+      // Map oracles by birth_issue for post/comment author lookup
       const authorsMap = new Map<string, Oracle>()
-      ;(oraclesData.items || []).forEach((o: Oracle) => authorsMap.set(o.id, o))
+      ;(oraclesData.items || []).forEach((o: Oracle) => {
+        if (o.birth_issue) authorsMap.set(o.birth_issue, o)
+        if (o.bot_wallet) authorsMap.set(o.bot_wallet.toLowerCase(), o)
+      })
 
       setPost(postData)
       setLocalUpvotes(postData.upvotes || 0)
@@ -120,7 +124,7 @@ export function PostDetail() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           content: newComment.trim(),
-          author: oracle.id,
+          author: human?.id,
           message: siweMessage,
           signature,
         }),
@@ -153,7 +157,7 @@ export function PostDetail() {
     )
   }
 
-  const postAuthor = authors.get(post.author)
+  const postAuthor = (post.oracle_birth_issue ? authors.get(post.oracle_birth_issue) : null) || authors.get(post.author_wallet?.toLowerCase())
   const postDisplayInfo = getDisplayInfo(postAuthor || null)
 
   return (
@@ -261,7 +265,7 @@ export function PostDetail() {
       ) : (
         <div className="space-y-4">
           {comments.map((comment) => {
-            const commentAuthor = authors.get(comment.author)
+            const commentAuthor = authors.get(comment.author_wallet?.toLowerCase())
             const commentDisplayInfo = getDisplayInfo(commentAuthor || null)
             return (
               <div key={comment.id} className="rounded-lg border border-slate-800 bg-slate-900/30 p-4">

@@ -43,7 +43,7 @@ interface TimelineCardProps {
 function TimelineCard({ oracle, presence, position, index, showOwner = false }: TimelineCardProps) {
   const displayInfo = getDisplayInfo(oracle)
   const status: 'online' | 'away' | 'offline' = presence?.status || 'offline'
-  const profileUrl = `/u/${checksumAddress(oracle.wallet_address) || oracle.id}`
+  const profileUrl = `/u/${checksumAddress(oracle.bot_wallet) || oracle.id}`
 
   return (
     <Link to={profileUrl} className="block">
@@ -113,13 +113,13 @@ function TimelineCard({ oracle, presence, position, index, showOwner = false }: 
                 Oracle
               </span>
             </div>
-            {showOwner && oracle.expand?.human && (
+            {showOwner && oracle.owner_wallet && (
               <div className={cn(
                 'text-xs text-blue-400 flex items-center gap-1 mt-0.5',
                 position === 'left' ? 'justify-end' : 'justify-start'
               )}>
                 <Users className="h-2.5 w-2.5" />
-                @{oracle.expand.human.github_username || oracle.expand.human.display_name}
+                {oracle.owner_wallet.slice(0, 6)}...{oracle.owner_wallet.slice(-4)}
               </div>
             )}
             {oracle.bio && (
@@ -191,23 +191,20 @@ export function World() {
     fetchWorld()
   }, [])
 
-  // Directory: group all oracles by human
+  // Directory: group all oracles by owner wallet
   const directoryGroups = useMemo(() => {
-    const groups = new Map<string, { human: Human | null; oracles: Oracle[] }>()
+    const groups = new Map<string, { human: null; oracles: Oracle[] }>()
     for (const oracle of allOracles) {
-      const humanId = oracle.human || 'unclaimed'
-      const human = oracle.expand?.human || null
-      if (!groups.has(humanId)) {
-        groups.set(humanId, { human, oracles: [] })
+      const ownerKey = oracle.owner_wallet || 'unclaimed'
+      if (!groups.has(ownerKey)) {
+        groups.set(ownerKey, { human: null, oracles: [] })
       }
-      groups.get(humanId)!.oracles.push(oracle)
+      groups.get(ownerKey)!.oracles.push(oracle)
     }
-    return [...groups.entries()].sort(([idA, a], [idB, b]) => {
+    return [...groups.entries()].sort(([idA], [idB]) => {
       if (idA === 'unclaimed') return 1
       if (idB === 'unclaimed') return -1
-      const nameA = a.human?.github_username || ''
-      const nameB = b.human?.github_username || ''
-      return nameA.localeCompare(nameB)
+      return idA.localeCompare(idB)
     })
   }, [allOracles])
 
@@ -233,18 +230,17 @@ export function World() {
     }
   }, [isLoading, allOracles.length])
 
-  // Group oracles by human, then sort each group by birth issue number
+  // Group oracles by owner wallet, then sort each group by birth issue number
   const groupedByHuman = useMemo(() => {
     const groups = new Map<string, HumanGroup>()
 
     for (const oracle of oracles) {
-      const humanId = oracle.human || 'unclaimed'
-      const human = oracle.expand?.human || null
+      const ownerKey = oracle.owner_wallet || 'unclaimed'
 
-      if (!groups.has(humanId)) {
-        groups.set(humanId, { human, oracles: [] })
+      if (!groups.has(ownerKey)) {
+        groups.set(ownerKey, { human: null, oracles: [] })
       }
-      groups.get(humanId)!.oracles.push(oracle)
+      groups.get(ownerKey)!.oracles.push(oracle)
     }
 
     // Sort oracles within each group by issue number (descending - newest first)
@@ -367,13 +363,13 @@ export function World() {
       )}>
       {viewMode === 'directory' ? (
         <div className="space-y-8">
-          {directoryGroups.map(([humanId, { human, oracles: groupOracles }]) => (
-            <div key={humanId}>
+          {directoryGroups.map(([ownerKey, { oracles: groupOracles }]) => (
+            <div key={ownerKey}>
               <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-800">
                 <User className="h-4 w-4 text-slate-500" />
-                {human ? (
+                {ownerKey !== 'unclaimed' ? (
                   <>
-                    <span className="font-medium text-blue-400">@{human.github_username || human.display_name}</span>
+                    <span className="font-medium text-blue-400 font-mono">{ownerKey.slice(0, 6)}...{ownerKey.slice(-4)}</span>
                     <span className="text-slate-500 text-sm">
                       {groupOracles.length} oracle{groupOracles.length !== 1 ? 's' : ''}
                     </span>

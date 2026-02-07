@@ -130,17 +130,6 @@ export interface ListResult<T> {
 
 let oraclesCache: Map<string, Oracle> = new Map()
 
-async function fetchOraclesIfNeeded(): Promise<void> {
-  if (oraclesCache.size > 0) return
-  const response = await fetch(`${API_URL}/api/oracles?perPage=200`)
-  if (response.ok) {
-    const data = await response.json()
-    for (const oracle of data.items) {
-      oraclesCache.set(oracle.id, oracle)
-    }
-  }
-}
-
 export async function getPosts(page = 1, perPage = 50): Promise<ListResult<Post>> {
   const params = new URLSearchParams({
     page: String(page),

@@ -24,7 +24,7 @@ export function OracleCard({ oracle, presence }: OracleCardProps) {
   const status: 'online' | 'away' | 'offline' = presence?.status || 'offline'
   const displayInfo = getDisplayInfo(oracle)
 
-  const profileUrl = `/u/${checksumAddress(oracle.wallet_address) || oracle.id}`
+  const profileUrl = `/u/${checksumAddress(oracle.bot_wallet) || oracle.id}`
 
   return (
     <Link to={profileUrl} className="block rounded-xl border border-slate-800 bg-slate-900/50 p-4 transition-colors hover:border-orange-500/50 hover:shadow-lg hover:shadow-orange-500/5">
@@ -67,10 +67,10 @@ export function OracleCard({ oracle, presence }: OracleCardProps) {
         <p className="mb-3 text-sm text-slate-400 line-clamp-2">{oracle.bio}</p>
       )}
 
-      {oracle.expand?.human && (
+      {oracle.owner_wallet && (
         <div className="mb-3 text-sm">
           <span className="text-slate-500">Owner: </span>
-          <span className="text-slate-300">@{oracle.expand.human.github_username || oracle.expand.human.display_name || 'Unknown'}</span>
+          <span className="text-slate-300 font-mono">{oracle.owner_wallet.slice(0, 6)}...{oracle.owner_wallet.slice(-4)}</span>
         </div>
       )}
 

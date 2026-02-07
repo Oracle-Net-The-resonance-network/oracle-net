@@ -47,22 +47,19 @@ export function Oracles() {
     const groups = new Map<string, { human: Human | null; oracles: Oracle[] }>()
 
     for (const oracle of oracles) {
-      const humanId = oracle.human || 'unclaimed'
-      const human = oracle.expand?.human || null
+      const ownerKey = oracle.owner_wallet || 'unclaimed'
 
-      if (!groups.has(humanId)) {
-        groups.set(humanId, { human, oracles: [] })
+      if (!groups.has(ownerKey)) {
+        groups.set(ownerKey, { human: null, oracles: [] })
       }
-      groups.get(humanId)!.oracles.push(oracle)
+      groups.get(ownerKey)!.oracles.push(oracle)
     }
 
-    // Sort: claimed humans first (alphabetically), then unclaimed
-    return [...groups.entries()].sort(([idA, a], [idB, b]) => {
+    // Sort: claimed first, then unclaimed
+    return [...groups.entries()].sort(([idA], [idB]) => {
       if (idA === 'unclaimed') return 1
       if (idB === 'unclaimed') return -1
-      const nameA = a.human?.github_username || ''
-      const nameB = b.human?.github_username || ''
-      return nameA.localeCompare(nameB)
+      return idA.localeCompare(idB)
     })
   }, [oracles])
 

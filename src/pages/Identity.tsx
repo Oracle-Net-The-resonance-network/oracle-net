@@ -8,7 +8,7 @@ import { getMerkleRoot, type Assignment } from '@/lib/merkle'
 // API URL for all backend calls (GitHub proxy, verification, etc.)
 const API_URL = import.meta.env.VITE_API_URL || 'https://oracle-universe-api.laris.workers.dev'
 import { useAuth } from '@/contexts/AuthContext'
-import { pb } from '@/lib/pocketbase'
+import { setToken } from '@/lib/pocketbase'
 import { checksumAddress } from '@/lib/utils'
 
 const STORAGE_KEY = 'oracle-identity-assignments'
@@ -394,7 +394,7 @@ ${getSignedBody()}
         // Success! The verify-identity endpoint now returns human + oracle
         // Save the token and refresh auth state
         if (data.token) {
-          pb.authStore.save(data.token, null)
+          setToken(data.token)
         }
 
         // Refresh auth context to get updated human + oracles
@@ -568,7 +568,7 @@ bun scripts/oraclenet.ts assign` : ''
               {oracles.map(o => (
                 <Link
                   key={o.id}
-                  to={`/u/${checksumAddress(o.wallet_address) || o.id}`}
+                  to={`/u/${checksumAddress(o.bot_wallet) || o.id}`}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/10 text-xs text-purple-300 hover:bg-purple-500/20 transition-colors"
                 >
                   <span className="font-medium">{o.oracle_name || o.name}</span>
@@ -865,7 +865,7 @@ After running, paste the issue URL in the field below.`, 'ghCmd')}
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
                             <span className="font-medium text-slate-200">{a.oracle}</span>
-                            {matchedOracle?.wallet_address && (
+                            {matchedOracle?.bot_wallet && (
                               isWalletVerified ? (
                                 <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium bg-emerald-500/20 text-emerald-400">
                                   <Shield className="h-3 w-3" />
