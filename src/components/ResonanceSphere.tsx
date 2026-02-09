@@ -23,47 +23,130 @@ export interface OracleNode {
   name: string
   initial: string
   color: string
+  owner?: string  // GitHub username or wallet (for grouping)
 }
 
-function OracleLabels({ oracles }: { oracles: OracleNode[] }) {
-  const labelPositions = useMemo(() => {
-    const r = SPHERE_RADIUS * 0.55
-    return [
-      new THREE.Vector3(-r * 0.9, r * 0.3, r * 0.4),
-      new THREE.Vector3(r * 0.8, r * 0.5, r * 0.3),
-      new THREE.Vector3(-r * 0.5, -r * 0.5, r * 0.6),
-      new THREE.Vector3(r * 0.6, -r * 0.3, r * 0.5),
-      new THREE.Vector3(-r * 0.2, r * 0.1, r * 0.8),
-      new THREE.Vector3(r * 0.3, -r * 0.6, r * 0.4),
-    ]
-  }, [])
+interface OwnerGroup {
+  owner: string | undefined
+  oracles: OracleNode[]
+}
+
+function OracleLabels({ oracles, isMobile }: { oracles: OracleNode[]; isMobile: boolean }) {
+  // Group oracles by owner
+  const groups = useMemo(() => {
+    const map = new Map<string, OracleNode[]>()
+    for (const o of oracles) {
+      const key = o.owner || o.id // ungrouped oracles get their own "group"
+      const list = map.get(key) || []
+      list.push(o)
+      map.set(key, list)
+    }
+    const result: OwnerGroup[] = []
+    for (const [, list] of map) {
+      result.push({ owner: list[0].owner, oracles: list })
+    }
+    return result
+  }, [oracles])
+
+  const maxGroups = isMobile ? 8 : 12
+  const shown = groups.slice(0, maxGroups)
+
+  const MAX_PER_GROUP = 20
+
+  // For each group, compute individual oracle positions
+  // Large groups spread across the hemisphere; small groups cluster around their center
+  const oraclePositions = useMemo(() => {
+    const result: Map<number, THREE.Vector3[]> = new Map()
+    const r = SPHERE_RADIUS * 0.75
+    const goldenAngle = Math.PI * (3 - Math.sqrt(5))
+
+    // Collect all oracle positions from all groups into one flat list
+    // so they distribute across the full hemisphere without overlapping
+    const allItems: { gi: number; oi: number }[] = []
+    for (let gi = 0; gi < shown.length; gi++) {
+      const visCount = Math.min(shown[gi].oracles.length, MAX_PER_GROUP)
+      for (let oi = 0; oi < visCount; oi++) {
+        allItems.push({ gi, oi })
+      }
+    }
+
+    const n = allItems.length
+    // Distribute ALL oracle labels across the front hemisphere using golden angle
+    for (let idx = 0; idx < n; idx++) {
+      const { gi } = allItems[idx]
+      const y = 0.8 - (1.6 * (idx + 0.5)) / n
+      const radiusAtY = Math.sqrt(1 - Math.min(y * y, 0.99))
+      const theta = goldenAngle * idx
+      const z = Math.abs(radiusAtY * Math.cos(theta)) * 0.4 + 0.3
+      const x = radiusAtY * Math.sin(theta)
+      const pos = new THREE.Vector3(x * r, y * r, z * r)
+
+      if (!result.has(gi)) result.set(gi, [])
+      result.get(gi)!.push(pos)
+    }
+    return result
+  }, [shown])
 
   return (
     <group>
-      {oracles.slice(0, 6).map((oracle, i) => (
-        <Html
-          key={oracle.id}
-          position={labelPositions[i] || labelPositions[0]}
-          center
-          distanceFactor={6}
-          style={{ pointerEvents: 'auto' }}
-        >
-          <a
-            href="/world"
-            className="flex items-center gap-2 rounded-full border border-slate-600/50 bg-slate-900/80 px-3 py-1.5 backdrop-blur-sm transition-all hover:border-orange-500/40 hover:bg-slate-800/90 whitespace-nowrap"
-          >
-            <div
-              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
-              style={{ background: oracle.color }}
-            >
-              {oracle.initial}
-            </div>
-            <span className="text-xs font-medium text-slate-300">
-              {oracle.name}
-            </span>
-          </a>
-        </Html>
-      ))}
+      {shown.map((group, gi) => {
+        const positions = oraclePositions.get(gi) || []
+        const visibleOracles = group.oracles.slice(0, MAX_PER_GROUP)
+        const extraCount = group.oracles.length - MAX_PER_GROUP
+        const isCluster = group.oracles.length > 1 && group.owner
+
+        // Owner label — centered above the group's first oracle
+        const ownerPos = positions[0]
+          ? new THREE.Vector3(positions[0].x, positions[0].y + SPHERE_RADIUS * 0.12, positions[0].z)
+          : new THREE.Vector3(0, SPHERE_RADIUS * 0.8, 1)
+
+        return (
+          <group key={group.owner || group.oracles[0]?.id || `group-${gi}`}>
+            {isCluster && (
+              <Html position={ownerPos} center distanceFactor={6} style={{ pointerEvents: 'none' }}>
+                <span className="text-[10px] font-medium text-slate-500 whitespace-nowrap">
+                  @{group.owner}
+                </span>
+              </Html>
+            )}
+
+            {visibleOracles.map((oracle, oi) => {
+              const pos = positions[oi] || new THREE.Vector3(0, 0, 1)
+              return (
+                <Html key={oracle.id} position={pos} center distanceFactor={6} style={{ pointerEvents: 'auto' }}>
+                  <a
+                    href="/world"
+                    className="flex items-center gap-2 rounded-full border border-slate-600/50 bg-slate-900/80 px-3 py-1.5 backdrop-blur-sm transition-all hover:border-orange-500/40 hover:bg-slate-800/90 whitespace-nowrap"
+                  >
+                    <div
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                      style={{ background: oracle.color }}
+                    >
+                      {oracle.initial}
+                    </div>
+                    <span className="text-xs font-medium text-slate-300">{oracle.name}</span>
+                  </a>
+                </Html>
+              )
+            })}
+
+            {extraCount > 0 && (
+              <Html
+                position={new THREE.Vector3(
+                  (positions[positions.length - 1]?.x || 0),
+                  (positions[positions.length - 1]?.y || 0) - SPHERE_RADIUS * 0.1,
+                  (positions[positions.length - 1]?.z || 1),
+                )}
+                center
+                distanceFactor={6}
+                style={{ pointerEvents: 'none' }}
+              >
+                <span className="text-[10px] text-slate-600 whitespace-nowrap">+{extraCount} more</span>
+              </Html>
+            )}
+          </group>
+        )
+      })}
     </group>
   )
 }
@@ -163,7 +246,7 @@ export function ResonanceSphere({ className, oracles = [] }: { className?: strin
         resize={{ scroll: true, debounce: { scroll: 50, resize: 0 } }}
       >
         <Particles count={particleCount} />
-        {oracles.length > 0 && <OracleLabels oracles={oracles} />}
+        {oracles.length > 0 && <OracleLabels oracles={oracles} isMobile={isMobile} />}
         <OrbitControls
           enableZoom={false}
           enablePan={false}

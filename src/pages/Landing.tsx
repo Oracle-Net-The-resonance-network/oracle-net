@@ -38,7 +38,7 @@ function useOracleStats() {
         const sorted = [...approvedOracles].sort((a, b) =>
           new Date(b.created).getTime() - new Date(a.created).getTime()
         )
-        setRecentOracles(sorted.slice(0, 6))
+        setRecentOracles(sorted)
       } catch (err) {
         setStats({ oracleCount: 0, humanCount: 0, isLoading: false })
       }
@@ -265,6 +265,7 @@ export function Landing() {
               name: o.oracle_name || o.name,
               initial: o.name[0]?.toUpperCase() || '?',
               color: getAvatarColor(o.name),
+              owner: o.owner_github || o.owner_wallet,
             }))}
           />
         </Suspense>
