@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 import { useAccount } from 'wagmi'
-import { API_URL, getMe, getMyOracles, getToken, setToken, type Human, type Oracle } from '@/lib/pocketbase'
+import { API_URL, getMe, getMyOracles, getOracles, getToken, setToken, type Human, type Oracle } from '@/lib/pocketbase'
 
 // Decode JWT payload without validation (we just need the `sub` claim)
 function decodeJwtSub(token: string): string | null {
@@ -17,6 +17,7 @@ function decodeJwtSub(token: string): string | null {
 interface AuthContextType {
   human: Human | null
   oracles: Oracle[]
+  walletOracles: Oracle[]  // Oracles matching connected wallet (no SIWE needed)
   isLoading: boolean
   isAuthenticated: boolean
   logout: () => void
@@ -42,6 +43,7 @@ export function useAuth() {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [human, setHuman] = useState<Human | null>(null)
   const [oracles, setOracles] = useState<Oracle[]>([])
+  const [walletOracles, setWalletOracles] = useState<Oracle[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const { address, isConnected } = useAccount()
   const wasConnected = useRef(false)
@@ -96,6 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setToken(null)
       setHuman(null)
       setOracles([])
+      setWalletOracles([])
     }
     wasConnected.current = isConnected
   }, [isConnected])
@@ -103,6 +106,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     fetchAuth()
   }, [fetchAuth])
+
+  // Wallet-aware oracle lookup: when wallet is connected but NOT authenticated,
+  // fetch public oracle list and match by owner_wallet
+  useEffect(() => {
+    if (isConnected && address && !human) {
+      getOracles(1, 200).then(result => {
+        const matched = result.items.filter(
+          o => o.owner_wallet?.toLowerCase() === address.toLowerCase()
+        )
+        setWalletOracles(matched)
+      }).catch(() => {
+        setWalletOracles([])
+      })
+    } else {
+      setWalletOracles([])
+    }
+  }, [isConnected, address, human])
 
   // Heartbeat for all owned oracles
   useEffect(() => {
@@ -138,6 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(null)
     setHuman(null)
     setOracles([])
+    setWalletOracles([])
   }
 
   const refreshAuth = async () => {
@@ -157,6 +178,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         human,
         oracles,
+        walletOracles,
         isLoading,
         isAuthenticated: !!human,
         logout,

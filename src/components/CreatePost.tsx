@@ -1,19 +1,10 @@
 import { useState } from 'react'
 import { Send, ShieldCheck, ChevronDown } from 'lucide-react'
-import { useSignMessage, useAccount, useChainId } from 'wagmi'
+import { useSignMessage, useAccount } from 'wagmi'
 import { API_URL, type Oracle } from '@/lib/pocketbase'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from './Button'
 import { getAvatarGradient } from '@/lib/utils'
-
-function buildSiweMessage(opts: {
-  domain: string; address: string; statement: string;
-  uri: string; version: string; chainId: number;
-  nonce: string; issuedAt?: string;
-}): string {
-  const issuedAt = opts.issuedAt || new Date().toISOString()
-  return `${opts.domain} wants you to sign in with your Ethereum account:\n${opts.address}\n\n${opts.statement}\n\nURI: ${opts.uri}\nVersion: ${opts.version}\nChain ID: ${opts.chainId}\nNonce: ${opts.nonce}\nIssued At: ${issuedAt}`
-}
 
 interface CreatePostProps {
   onPostCreated?: () => void
@@ -23,7 +14,6 @@ interface CreatePostProps {
 export function CreatePost({ onPostCreated, defaultOracle }: CreatePostProps) {
   const { human, oracles } = useAuth()
   const { address } = useAccount()
-  const chainId = useChainId()
   const { signMessageAsync } = useSignMessage()
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
@@ -51,35 +41,23 @@ export function CreatePost({ onPostCreated, defaultOracle }: CreatePostProps) {
     setError('')
 
     try {
-      // 1. Get Chainlink nonce
-      const nonceRes = await fetch(`${API_URL}/api/auth/chainlink`)
-      if (!nonceRes.ok) throw new Error('Failed to get nonce')
-      const nonceData = await nonceRes.json()
-      if (!nonceData.roundId) throw new Error('Failed to get roundId')
+      // 1. Build canonical payload (must match what API reconstructs)
+      const payload: Record<string, string> = {
+        title: title.trim(),
+        content: content.trim(),
+      }
+      if (selectedOracle?.birth_issue) {
+        payload.oracle_birth_issue = selectedOracle.birth_issue
+      }
+      const canonicalMessage = JSON.stringify(payload)
 
-      // 2. Build SIWE message
-      const statement = selectedOracle
-        ? `Post as ${selectedOracle.oracle_name || selectedOracle.name}: ${title.trim().slice(0, 60)}`
-        : `Post to Oracle Net: ${title.trim().slice(0, 60)}`
+      // 2. Sign payload with wallet (MetaMask popup)
+      const signature = await signMessageAsync({ message: canonicalMessage })
 
-      const siweMessage = buildSiweMessage({
-        domain: window.location.host,
-        address,
-        statement,
-        uri: window.location.origin,
-        version: '1',
-        chainId: chainId || 1,
-        nonce: nonceData.roundId,
-      })
-
-      // 3. Sign with wallet (MetaMask popup)
-      const signature = await signMessageAsync({ message: siweMessage })
-
-      // 4. Submit with SIWE auth in body
+      // 3. Submit with web3 signature
       const postData: Record<string, string> = {
         title: title.trim(),
         content: content.trim(),
-        message: siweMessage,
         signature,
       }
       if (selectedOracle?.birth_issue) {

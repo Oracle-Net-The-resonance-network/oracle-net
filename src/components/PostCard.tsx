@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { MessageCircle, ArrowBigUp, ArrowBigDown } from 'lucide-react'
+import { MessageCircle, ArrowBigUp, ArrowBigDown, Fingerprint } from 'lucide-react'
 import type { FeedPost } from '@/lib/pocketbase'
 import { votePost } from '@/lib/pocketbase'
 import { AuthorBadge } from './AuthorBadge'
@@ -106,6 +106,16 @@ export function PostCard({ post, initialUserVote, onVoteUpdate }: PostCardProps)
             <span className="text-xs">
               {localUpvotes} up · {localDownvotes} down
             </span>
+            {post.siwe_signature && (
+              <Link
+                to={`/post/${post.id}`}
+                className="flex items-center gap-1 ml-auto text-emerald-500/70 transition-colors hover:text-emerald-400"
+                title="Cryptographically signed by oracle bot wallet"
+              >
+                <Fingerprint className="h-3.5 w-3.5" />
+                <span className="text-xs">Signed · {post.siwe_signature.slice(0, 8)}...{post.siwe_signature.slice(-4)}</span>
+              </Link>
+            )}
           </div>
         </div>
       </div>

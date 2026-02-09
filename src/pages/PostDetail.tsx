@@ -1,27 +1,19 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { Loader2, ArrowLeft, Send, ArrowBigUp, ArrowBigDown, ShieldCheck } from 'lucide-react'
-import { useSignMessage, useAccount, useChainId } from 'wagmi'
+import { useSignMessage, useAccount } from 'wagmi'
 import { API_URL, votePost, getMyVotes, type Post, type Comment } from '@/lib/pocketbase'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/Button'
 import { type DisplayableEntity } from '@/lib/utils'
 import { AuthorBadge } from '@/components/AuthorBadge'
+import { Web3Proof } from '@/components/Web3Proof'
 
-function buildSiweMessage(opts: {
-  domain: string; address: string; statement: string;
-  uri: string; version: string; chainId: number;
-  nonce: string; issuedAt?: string;
-}): string {
-  const issuedAt = opts.issuedAt || new Date().toISOString()
-  return `${opts.domain} wants you to sign in with your Ethereum account:\n${opts.address}\n\n${opts.statement}\n\nURI: ${opts.uri}\nVersion: ${opts.version}\nChain ID: ${opts.chainId}\nNonce: ${opts.nonce}\nIssued At: ${issuedAt}`
-}
 
 export function PostDetail() {
   const { id } = useParams<{ id: string }>()
   const { isAuthenticated } = useAuth()
   const { address } = useAccount()
-  const chainId = useChainId()
   const { signMessageAsync } = useSignMessage()
   const [post, setPost] = useState<Post | null>(null)
   const [comments, setComments] = useState<Comment[]>([])
@@ -48,11 +40,17 @@ export function PostDetail() {
       const commentsData = await commentsRes.json()
       const feedData = await feedRes.json()
 
-      // Build authors map from feed (which already resolves humans + oracles)
+      // Build authors map from feed (post authors) + comments (comment authors)
       const authorsMap = new Map<string, DisplayableEntity>()
       ;(feedData.posts || []).forEach((p: { author_wallet?: string; author?: Record<string, unknown> }) => {
         if (p.author_wallet && p.author) {
           authorsMap.set(p.author_wallet.toLowerCase(), p.author as unknown as DisplayableEntity)
+        }
+      })
+      // Merge comment authors (resolved by API)
+      ;(commentsData.items || []).forEach((c: { author_wallet?: string; author?: Record<string, unknown> }) => {
+        if (c.author_wallet && c.author) {
+          authorsMap.set(c.author_wallet.toLowerCase(), c.author as unknown as DisplayableEntity)
         }
       })
 
@@ -101,32 +99,19 @@ export function PostDetail() {
 
     setIsSubmitting(true)
     try {
-      // 1. Get Chainlink nonce
-      const nonceRes = await fetch(`${API_URL}/api/auth/chainlink`)
-      if (!nonceRes.ok) throw new Error('Failed to get nonce')
-      const nonceData = await nonceRes.json()
+      // Build content payload (same pattern as posts — signs WHAT was said)
+      const payload = JSON.stringify({ content: newComment.trim(), post: id })
 
-      // 2. Build SIWE message
-      const siweMessage = buildSiweMessage({
-        domain: window.location.host,
-        address,
-        statement: `Comment on Oracle Net post`,
-        uri: window.location.origin,
-        version: '1',
-        chainId: chainId || 1,
-        nonce: nonceData.roundId,
-      })
+      // Sign the content payload with wallet
+      const signature = await signMessageAsync({ message: payload })
 
-      // 3. Sign with wallet
-      const signature = await signMessageAsync({ message: siweMessage })
-
-      // 4. Submit with SIWE auth
+      // Submit with content signature
       const res = await fetch(`${API_URL}/api/posts/${id}/comments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           content: newComment.trim(),
-          message: siweMessage,
+          message: payload,
           signature,
         }),
       })
@@ -141,6 +126,7 @@ export function PostDetail() {
       setIsSubmitting(false)
     }
   }
+
 
   if (isLoading) {
     return (
@@ -212,6 +198,12 @@ export function PostDetail() {
             </div>
             <h1 className="mb-3 text-2xl font-bold text-slate-100">{post.title}</h1>
             <p className="whitespace-pre-wrap text-slate-300">{post.content}</p>
+
+            {/* Cryptographic proof */}
+            {post.siwe_signature && (
+              <Web3Proof signature={post.siwe_signature} message={post.siwe_message} signerWallet={post.author_wallet} />
+            )}
+
             <div className="mt-4 text-xs text-slate-500">
               {localUpvotes} up · {localDownvotes} down
             </div>
@@ -255,6 +247,9 @@ export function PostDetail() {
                   <AuthorBadge author={commentAuthor} wallet={comment.author_wallet} created={comment.created} />
                 </div>
                 <p className="text-slate-300">{comment.content}</p>
+                {comment.siwe_signature && (
+                  <Web3Proof signature={comment.siwe_signature} message={comment.siwe_message} signerWallet={comment.author_wallet} />
+                )}
               </div>
             )
           })}

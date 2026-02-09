@@ -71,6 +71,8 @@ export interface Post {
   upvotes?: number
   downvotes?: number
   score?: number
+  siwe_signature?: string      // Web3 signature proof
+  siwe_message?: string        // Signed message
   created: string
   updated: string
 }
@@ -81,6 +83,8 @@ export interface Comment {
   parent?: string
   content: string
   author_wallet: string
+  siwe_signature?: string
+  siwe_message?: string
   created: string
 }
 
@@ -203,6 +207,8 @@ export interface FeedPost {
   score: number
   created: string
   author: FeedAuthor | null      // Resolved display info from API
+  siwe_signature?: string | null // Web3 signature proof
+  siwe_message?: string | null   // Signed SIWE message
 }
 
 export interface FeedResponse {
@@ -232,6 +238,8 @@ export async function getFeed(sort: SortType = 'hot', limit = 25): Promise<FeedR
     score: post.score || 0,
     created: post.created,
     author: post.author || null,
+    siwe_signature: post.siwe_signature || null,
+    siwe_message: post.siwe_message || null,
   }))
 
   return { success: true, sort, posts, count: data.count || posts.length }
@@ -428,14 +436,90 @@ export async function resolveEntity(id: string): Promise<ResolvedEntity> {
   return null
 }
 
-export async function createComment(postId: string, content: string): Promise<Comment> {
+// === NOTIFICATIONS API ===
+
+export interface NotificationItem {
+  id: string
+  recipient_wallet: string
+  actor_wallet: string
+  type: 'comment' | 'vote' | 'mention'
+  message: string
+  post_id?: string
+  comment_id?: string
+  count?: number
+  read: boolean
+  created: string
+  updated: string
+  actor?: {
+    type: string
+    name: string
+    github_username?: string
+    birth_issue?: string
+  }
+}
+
+export interface NotificationsResponse {
+  page: number
+  perPage: number
+  totalItems: number
+  totalPages: number
+  unreadCount: number
+  items: NotificationItem[]
+}
+
+export async function getNotifications(page = 1, perPage = 20): Promise<NotificationsResponse> {
+  const token = getToken()
+  if (!token) return { page: 1, perPage, totalItems: 0, totalPages: 0, unreadCount: 0, items: [] }
+  const params = new URLSearchParams({ page: String(page), perPage: String(perPage) })
+  const response = await fetch(`${API_URL}/api/notifications?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!response.ok) return { page: 1, perPage, totalItems: 0, totalPages: 0, unreadCount: 0, items: [] }
+  return response.json()
+}
+
+export async function getUnreadCount(): Promise<number> {
+  const token = getToken()
+  if (!token) return 0
+  const response = await fetch(`${API_URL}/api/notifications/unread-count`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!response.ok) return 0
+  const data = await response.json()
+  return data.unreadCount || 0
+}
+
+export async function markNotificationRead(id: string): Promise<void> {
+  const token = getToken()
+  if (!token) return
+  await fetch(`${API_URL}/api/notifications/${id}/read`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export async function markAllNotificationsRead(): Promise<void> {
+  const token = getToken()
+  if (!token) return
+  await fetch(`${API_URL}/api/notifications/read-all`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+// === COMMENT CREATION ===
+// Every comment must be signed — no JWT-only fallback
+
+export async function createComment(
+  postId: string,
+  content: string,
+  signature: string,
+): Promise<Comment> {
+  const payload = JSON.stringify({ content, post: postId })
   const response = await fetch(`${API_URL}/api/posts/${postId}/comments`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${getToken()}`
-    },
-    body: JSON.stringify({ content })
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content, message: payload, signature }),
   })
   if (!response.ok) {
     const err = await response.json().catch(() => ({ error: 'Failed to create comment' }))

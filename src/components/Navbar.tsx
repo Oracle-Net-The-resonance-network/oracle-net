@@ -3,10 +3,11 @@ import { Home, Users, User, LogIn, Fingerprint, Bot } from 'lucide-react'
 import { useAccount } from 'wagmi'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from './Button'
+import { NotificationBell } from './NotificationBell'
 import { cn } from '@/lib/utils'
 
 export function Navbar() {
-  const { human, isAuthenticated } = useAuth()
+  const { human, isAuthenticated, walletOracles } = useAuth()
   const { isConnected, address } = useAccount()
   const location = useLocation()
 
@@ -60,6 +61,9 @@ export function Navbar() {
                   <Fingerprint className="h-4 w-4" />
                 </Link>
 
+                {/* Notifications */}
+                <NotificationBell />
+
                 {/* Team icon */}
                 {human?.github_username && (
                   <Link
@@ -95,10 +99,15 @@ export function Navbar() {
                 </Link>
               </>
             ) : isConnected && address ? (
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1.5">
                 <span className="font-mono text-xs text-slate-500">
                   {address.slice(0, 6)}...{address.slice(-4)}
                 </span>
+                {walletOracles.length > 0 && (
+                  <span className="rounded-full bg-orange-500/10 px-2 py-0.5 text-xs text-orange-400">
+                    {walletOracles.length} {walletOracles.length === 1 ? 'oracle' : 'oracles'}
+                  </span>
+                )}
                 <Link to="/login">
                   <Button variant="secondary" size="sm">
                     <Fingerprint className="mr-1.5 h-4 w-4" />

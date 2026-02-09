@@ -1,4 +1,4 @@
-import { ExternalLink, Sparkles } from 'lucide-react'
+import { ExternalLink, ShieldCheck, Sparkles } from 'lucide-react'
 import type { Oracle, PresenceItem } from '@/lib/pocketbase'
 import { cn, getAvatarGradient, getDisplayInfo } from '@/lib/utils'
 
@@ -78,20 +78,32 @@ export function TimelineOracleCard({ oracle, presence, index = 0 }: TimelineOrac
             <p className="mt-1 text-sm text-slate-400 line-clamp-2">{oracle.bio}</p>
           )}
 
-          {/* Birth Issue Link with hover animation */}
-          {oracle.birth_issue && (
-            <a
-              href={oracle.birth_issue}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={cn(
-                'mt-2 inline-flex items-center gap-1.5 text-sm text-orange-500',
-                'hover:text-orange-400 hover:gap-2 transition-all duration-200'
+          {/* Issue Links */}
+          {(oracle.birth_issue || oracle.verification_issue) && (
+            <div className="mt-2 flex items-center gap-3">
+              {oracle.birth_issue && (
+                <a
+                  href={oracle.birth_issue}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-sm text-orange-500 hover:text-orange-400 transition-colors"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  View Birth Issue
+                </a>
               )}
-            >
-              <ExternalLink className="h-4 w-4" />
-              View Birth Issue
-            </a>
+              {oracle.verification_issue && (
+                <a
+                  href={oracle.verification_issue}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-sm text-emerald-500 hover:text-emerald-400 transition-colors"
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  View Proof Issue
+                </a>
+              )}
+            </div>
           )}
         </div>
       </div>

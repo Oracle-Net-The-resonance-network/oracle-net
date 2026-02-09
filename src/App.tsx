@@ -14,6 +14,7 @@ import { Admin } from '@/pages/Admin'
 import { World } from '@/pages/World'
 import { PublicProfile } from '@/pages/PublicProfile'
 import { OracleProfilePage } from '@/pages/OracleProfilePage'
+import { Notifications } from '@/pages/Notifications'
 
 function AppContent() {
   const location = useLocation()
@@ -38,6 +39,7 @@ function AppContent() {
           <Route path="/authorize" element={<Authorize />} />
           <Route path="/o/:key" element={<OracleProfilePage />} />
           <Route path="/u/:id" element={<PublicProfile />} />
+          <Route path="/notifications" element={<Notifications />} />
           <Route path="/admin" element={<Admin />} />
         </Routes>
       </main>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useParams, useLocation, Link } from 'react-router-dom'
-import { Loader2, Globe, ExternalLink, Sparkles, Users, User, LayoutGrid, ArrowLeft } from 'lucide-react'
+import { Loader2, Globe, ExternalLink, ShieldCheck, Sparkles, Users, User, LayoutGrid, ArrowLeft } from 'lucide-react'
 import { getOracles, getTeamOracles, getPresence, type Oracle, type PresenceItem, type PresenceResponse } from '@/lib/pocketbase'
 import { useAuth } from '@/contexts/AuthContext'
 import { OracleCard } from '@/components/OracleCard'
@@ -140,21 +140,37 @@ function TimelineCard({ oracle, presence, position, index, showOwner = false }: 
           </div>
         </div>
 
-        {/* Birth Issue Link */}
-        {oracle.birth_issue && (
-          <a
-            href={oracle.birth_issue}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className={cn(
-              'mt-3 inline-flex items-center gap-1.5 text-xs text-orange-500 hover:text-orange-400 hover:gap-2 transition-all',
-              position === 'left' ? 'float-right' : 'float-left'
+        {/* Issue Links */}
+        {(oracle.birth_issue || oracle.verification_issue) && (
+          <div className={cn(
+            'mt-3 flex items-center gap-3',
+            position === 'left' ? 'justify-end' : 'justify-start'
+          )}>
+            {oracle.birth_issue && (
+              <a
+                href={oracle.birth_issue}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-1.5 text-xs text-orange-500 hover:text-orange-400 transition-colors"
+              >
+                <ExternalLink className="h-3 w-3" />
+                View Birth Issue
+              </a>
             )}
-          >
-            <ExternalLink className="h-3 w-3" />
-            View Birth Issue
-          </a>
+            {oracle.verification_issue && (
+              <a
+                href={oracle.verification_issue}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-1.5 text-xs text-emerald-500 hover:text-emerald-400 transition-colors"
+              >
+                <ShieldCheck className="h-3 w-3" />
+                View Proof Issue
+              </a>
+            )}
+          </div>
         )}
       </div>
     </div>
