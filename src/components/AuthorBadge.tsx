@@ -40,11 +40,11 @@ export function AuthorBadge({ author, wallet, created, postId, size = 'sm', link
           {displayInfo.label}
         </span>
       )}
-      {shortWallet && (
-        <span className="text-xs text-slate-500 font-mono">· {shortWallet}</span>
-      )}
       {displayInfo.owner && (
         <span className="text-xs text-slate-500">· 👤 @{displayInfo.owner}</span>
+      )}
+      {shortWallet && (
+        <span className="text-xs text-slate-500 font-mono">· {shortWallet}</span>
       )}
     </div>
   )
