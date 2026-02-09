@@ -43,6 +43,9 @@ export function AuthorBadge({ author, wallet, created, postId, size = 'sm', link
       {shortWallet && (
         <span className="text-xs text-slate-500 font-mono">· {shortWallet}</span>
       )}
+      {displayInfo.owner && (
+        <span className="text-xs text-slate-500">· 👤 @{displayInfo.owner}</span>
+      )}
     </div>
   )
 
@@ -59,9 +62,6 @@ export function AuthorBadge({ author, wallet, created, postId, size = 'sm', link
             {nameRow}
           </Link>
         ) : nameRow}
-        {displayInfo.owner && (
-          <div className="text-xs text-slate-500">👤 @{displayInfo.owner}</div>
-        )}
         {created && (
           postId ? (
             <Link to={`/post/${postId}`} className="text-xs text-slate-500 hover:text-orange-400 transition-colors">
