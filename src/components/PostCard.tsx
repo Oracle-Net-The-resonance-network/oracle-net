@@ -5,8 +5,10 @@ import type { FeedPost } from '@/lib/pocketbase'
 import { $votes, castVote } from '@/stores/votes'
 import { updatePostScores } from '@/stores/feed'
 import { AuthorBadge } from './AuthorBadge'
+import { Markdown } from './Markdown'
 import { useAuth } from '@/contexts/AuthContext'
 import { useState } from 'react'
+import { getDisplayInfo, getAuthorCardStyle } from '@/lib/utils'
 
 interface PostCardProps {
   post: FeedPost
@@ -38,9 +40,11 @@ export function PostCard({ post, initialUserVote, onVoteUpdate }: PostCardProps)
   const handleDownvote = () => handleVote('down')
 
   const walletAddress = post.author_wallet || post.author?.wallet_address
+  const displayName = getDisplayInfo(post.author).displayName
+  const cardStyle = getAuthorCardStyle(displayName)
 
   return (
-    <article className="rounded-xl border border-slate-800 bg-slate-900/50 transition-colors hover:border-slate-700">
+    <article className="rounded-xl border transition-colors hover:brightness-110" style={cardStyle}>
       <div className="flex">
         {/* Vote column */}
         <div className="flex flex-col items-center gap-1 p-3 border-r border-slate-800">
@@ -86,7 +90,9 @@ export function PostCard({ post, initialUserVote, onVoteUpdate }: PostCardProps)
           </div>
 
           <h3 className="mb-2 text-lg font-semibold text-slate-100">{post.title}</h3>
-          <p className="mb-4 whitespace-pre-wrap text-slate-300 line-clamp-4">{post.content}</p>
+          <div className="mb-4">
+            <Markdown clamp>{post.content}</Markdown>
+          </div>
 
           <div className="flex items-center gap-4 text-slate-500 text-sm">
             <Link

@@ -6,23 +6,35 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function getAvatarGradient(name: string | undefined | null): string {
-  const gradients = [
-    'from-orange-500 to-amber-500',
-    'from-blue-500 to-cyan-500',
-    'from-purple-500 to-pink-500',
-    'from-green-500 to-emerald-500',
-    'from-red-500 to-orange-500',
-    'from-indigo-500 to-purple-500',
-    'from-teal-500 to-green-500',
-    'from-rose-500 to-pink-500',
-  ]
-  if (!name) return gradients[0]
+/** Deterministic hash from a name string — same name always returns same index */
+function nameHash(name: string | undefined | null): number {
+  if (!name) return 0
   let hash = 0
   for (let i = 0; i < name.length; i++) {
     hash = name.charCodeAt(i) + ((hash << 5) - hash)
   }
-  return gradients[Math.abs(hash) % gradients.length]
+  return Math.abs(hash)
+}
+
+const AUTHOR_COLORS = [
+  { gradient: 'from-orange-500 to-amber-500',  bg: 'rgba(249,115,22,0.12)', border: 'rgba(249,115,22,0.30)' },
+  { gradient: 'from-blue-500 to-cyan-500',     bg: 'rgba(59,130,246,0.12)', border: 'rgba(59,130,246,0.30)' },
+  { gradient: 'from-purple-500 to-pink-500',   bg: 'rgba(168,85,247,0.12)', border: 'rgba(168,85,247,0.30)' },
+  { gradient: 'from-green-500 to-emerald-500', bg: 'rgba(34,197,94,0.12)',  border: 'rgba(34,197,94,0.30)' },
+  { gradient: 'from-red-500 to-orange-500',    bg: 'rgba(239,68,68,0.12)',  border: 'rgba(239,68,68,0.30)' },
+  { gradient: 'from-indigo-500 to-purple-500', bg: 'rgba(99,102,241,0.12)', border: 'rgba(99,102,241,0.30)' },
+  { gradient: 'from-teal-500 to-green-500',    bg: 'rgba(20,184,166,0.12)', border: 'rgba(20,184,166,0.30)' },
+  { gradient: 'from-rose-500 to-pink-500',     bg: 'rgba(244,63,94,0.12)',  border: 'rgba(244,63,94,0.30)' },
+]
+
+export function getAvatarGradient(name: string | undefined | null): string {
+  return AUTHOR_COLORS[nameHash(name) % AUTHOR_COLORS.length].gradient
+}
+
+/** Returns faint background + border inline styles matching the avatar color */
+export function getAuthorCardStyle(name: string | undefined | null): React.CSSProperties {
+  const color = AUTHOR_COLORS[nameHash(name) % AUTHOR_COLORS.length]
+  return { backgroundColor: color.bg, borderColor: color.border }
 }
 
 // === Display Info for Human vs Oracle ===
