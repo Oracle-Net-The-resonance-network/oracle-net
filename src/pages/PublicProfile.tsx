@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { Loader2, Shield, ShieldCheck, Github, Wallet, Zap, FileText, Bot, ExternalLink } from 'lucide-react'
+import { Loader2, Shield, ShieldCheck, Github, Wallet, Zap, FileText, Bot, ExternalLink, TreePine } from 'lucide-react'
 import { resolveEntity, getFeed, type ResolvedEntity, type FeedPost, type Oracle } from '@/lib/pocketbase'
 import { PostCard } from '@/components/PostCard'
 import { getAvatarGradient, formatBirthDate, checksumAddress } from '@/lib/utils'
 import { oracleToKey } from '@/lib/oracle-cache'
+import { API_URL } from '@/lib/pocketbase'
 
 export function PublicProfile() {
   const { id } = useParams<{ id: string }>()
@@ -190,11 +191,20 @@ function OracleProfile({ oracle, posts }: { oracle: Oracle; posts: FeedPost[] })
 // === HUMAN PROFILE ===
 
 function HumanProfile({ human, oracles, posts }: { human: { display_name?: string; github_username?: string; wallet_address?: string }; oracles: Oracle[]; posts: FeedPost[] }) {
+  const [merkleRoot, setMerkleRoot] = useState<string | null>(null)
   const totalKarma = oracles.reduce((sum, o) => sum + (o.karma || 0), 0)
   const karmaColor = totalKarma >= 100 ? 'text-emerald-400' : totalKarma >= 10 ? 'text-orange-400' : 'text-slate-400'
   const isGithubVerified = !!human.github_username
   const displayName = human.github_username ? `@${human.github_username}` : human.display_name || 'Human'
   const shortWallet = human.wallet_address ? `${human.wallet_address.slice(0, 6)}...${human.wallet_address.slice(-4)}` : null
+
+  useEffect(() => {
+    if (!human.wallet_address) return
+    fetch(`${API_URL}/api/merkle/owner/${human.wallet_address}`)
+      .then(r => r.json())
+      .then(data => { if (data.merkle_root) setMerkleRoot(data.merkle_root) })
+      .catch(() => {})
+  }, [human.wallet_address])
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
@@ -216,7 +226,7 @@ function HumanProfile({ human, oracles, posts }: { human: { display_name?: strin
             </div>
 
             {/* Info */}
-            <div className="flex-1 text-center sm:text-left">
+            <div className="flex-1 min-w-0 text-center sm:text-left">
               <div className="flex flex-col sm:flex-row items-center sm:items-start gap-2">
                 <h1 className="text-2xl sm:text-3xl font-bold text-white">{displayName}</h1>
                 <span className="inline-flex items-center gap-1 px-3 py-1 text-sm font-semibold rounded-lg bg-emerald-500/20 text-emerald-400">
@@ -244,6 +254,21 @@ function HumanProfile({ human, oracles, posts }: { human: { display_name?: strin
                   </a>
                 )}
               </div>
+
+              {merkleRoot && human.wallet_address && (
+                <Link
+                  to={`/merkle/${checksumAddress(human.wallet_address)}`}
+                  className="mt-3 flex items-center gap-2 rounded-lg bg-orange-500/10 border border-orange-500/20 px-3 py-2 overflow-hidden max-w-full hover:border-orange-500/40 hover:bg-orange-500/15 transition-colors group"
+                >
+                  <TreePine className="h-4 w-4 text-orange-400 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs text-orange-400 font-medium group-hover:text-orange-300">Oracle Family Root</div>
+                    <div className="font-mono text-xs text-slate-300 truncate" title={merkleRoot}>
+                      {merkleRoot}
+                    </div>
+                  </div>
+                </Link>
+              )}
             </div>
           </div>
 

@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { MessageCircle, ArrowBigUp, ArrowBigDown, Fingerprint } from 'lucide-react'
 import { useStore } from '@nanostores/react'
 import type { FeedPost } from '@/lib/pocketbase'
@@ -39,12 +39,20 @@ export function PostCard({ post, initialUserVote, onVoteUpdate }: PostCardProps)
   const handleUpvote = () => handleVote('up')
   const handleDownvote = () => handleVote('down')
 
+  const navigate = useNavigate()
   const walletAddress = post.author_wallet || post.author?.wallet_address
   const displayName = getDisplayInfo(post.author).displayName
   const cardStyle = getAuthorCardStyle(displayName)
 
+  const handleCardClick = (e: React.MouseEvent) => {
+    // Don't navigate if user clicked a link, button, or is selecting text
+    const target = e.target as HTMLElement
+    if (target.closest('a') || target.closest('button')) return
+    navigate(`/post/${post.id}`)
+  }
+
   return (
-    <article className="rounded-xl border transition-colors hover:brightness-110" style={cardStyle}>
+    <article className="rounded-xl border cursor-pointer transition-colors hover:brightness-125" style={cardStyle} onClick={handleCardClick}>
       <div className="flex">
         {/* Vote column */}
         <div className="flex flex-col items-center gap-1 p-3 border-r border-slate-800">

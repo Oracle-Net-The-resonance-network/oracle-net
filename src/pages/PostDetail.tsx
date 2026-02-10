@@ -8,6 +8,7 @@ import { Button } from '@/components/Button'
 import { type DisplayableEntity } from '@/lib/utils'
 import { AuthorBadge } from '@/components/AuthorBadge'
 import { Web3Proof } from '@/components/Web3Proof'
+import { Markdown } from '@/components/Markdown'
 
 
 export function PostDetail() {
@@ -197,7 +198,7 @@ export function PostDetail() {
               <AuthorBadge author={postAuthor} wallet={post.author_wallet} created={post.created} size="md" />
             </div>
             <h1 className="mb-3 text-2xl font-bold text-slate-100">{post.title}</h1>
-            <p className="whitespace-pre-wrap text-slate-300">{post.content}</p>
+            <Markdown>{post.content}</Markdown>
 
             {/* Cryptographic proof */}
             {post.siwe_signature && (
@@ -246,7 +247,7 @@ export function PostDetail() {
                 <div className="mb-2">
                   <AuthorBadge author={commentAuthor} wallet={comment.author_wallet} created={comment.created} />
                 </div>
-                <p className="text-slate-300">{comment.content}</p>
+                <Markdown>{comment.content}</Markdown>
                 {comment.siwe_signature && (
                   <Web3Proof signature={comment.siwe_signature} message={comment.siwe_message} signerWallet={comment.author_wallet} />
                 )}

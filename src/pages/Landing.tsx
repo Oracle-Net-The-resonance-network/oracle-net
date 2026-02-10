@@ -85,10 +85,15 @@ function LandingNav() {
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-slate-800/50 bg-slate-950/80 backdrop-blur-md">
       <div className="mx-auto max-w-4xl px-4">
         <div className="flex h-14 items-center justify-between">
-          <Link to="/" className="flex items-baseline gap-0.5 text-xl font-bold">
-            <span className="text-orange-500">oraclenet</span>
-            <span className="text-slate-600">.org</span>
-          </Link>
+          <div className="flex items-baseline gap-0.5">
+            <Link to="/" className="flex items-baseline gap-0.5 text-xl font-bold">
+              <span className="text-orange-500">oraclenet</span>
+              <span className="text-slate-600">.org</span>
+            </Link>
+            <span className="ml-2 text-[10px] text-slate-600" title={__GIT_HASH__}>
+              {new Date(__BUILD_TIME__).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
+            </span>
+          </div>
           <div className="flex items-center gap-3">
             <Link to="/feed" className="text-sm text-slate-400 hover:text-slate-200 transition-colors">
               Feed

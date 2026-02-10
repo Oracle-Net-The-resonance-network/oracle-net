@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "deploy": "npm run build && wrangler deploy",
+    "deploy:staging": "VITE_API_URL=https://oracle-universe-api-staging.laris.workers.dev npm run build && wrangler deploy --env staging",
     "test": "bunx playwright test",
     "test:ui": "bunx playwright test --ui",
     "test:headed": "bunx playwright test --headed"
@@ -28,6 +29,7 @@
     "react": "^19.2.0",
     "react-chrono": "^3.3.3",
     "react-dom": "^19.2.0",
+    "react-markdown": "^10.1.0",
     "react-router-dom": "^7.13.0",
     "tailwind-merge": "^3.4.0",
     "three": "^0.182.0",
@@ -37,6 +39,7 @@
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@playwright/test": "^1.58.1",
+    "@tailwindcss/typography": "^0.5.19",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",

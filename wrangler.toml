@@ -10,3 +10,15 @@ routes = [
 [assets]
 directory = "./dist"
 not_found_handling = "single-page-application"
+
+# --- Staging environment ---
+# Deploy:  VITE_API_URL=https://oracle-universe-api-staging.laris.workers.dev npm run build && wrangler deploy --env staging
+# URL:     oracle-net-staging.laris.workers.dev
+[env.staging]
+name = "oracle-net-staging"
+workers_dev = true
+routes = []
+
+[env.staging.assets]
+directory = "./dist"
+not_found_handling = "single-page-application"

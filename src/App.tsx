@@ -15,6 +15,7 @@ import { World } from '@/pages/World'
 import { PublicProfile } from '@/pages/PublicProfile'
 import { OracleProfilePage } from '@/pages/OracleProfilePage'
 import { Notifications } from '@/pages/Notifications'
+import { MerkleExplorer } from '@/pages/MerkleExplorer'
 
 function AppContent() {
   const location = useLocation()
@@ -39,13 +40,14 @@ function AppContent() {
           <Route path="/authorize" element={<Authorize />} />
           <Route path="/o/:key" element={<OracleProfilePage />} />
           <Route path="/u/:id" element={<PublicProfile />} />
+          <Route path="/merkle/:wallet" element={<MerkleExplorer />} />
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/admin" element={<Admin />} />
         </Routes>
       </main>
       {!isLandingPage && (
         <footer className="py-6 text-center text-[10px] text-slate-700">
-          v{__APP_VERSION__} · {__GIT_HASH__}
+          v{__APP_VERSION__} · {__GIT_HASH__} · {__BUILD_TIME__}
         </footer>
       )}
     </div>
