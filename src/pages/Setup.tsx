@@ -162,12 +162,14 @@ function Collapsible({
   title,
   icon: Icon,
   children,
+  defaultOpen = false,
 }: {
   title: string
   icon: React.ComponentType<{ className?: string }>
   children: React.ReactNode
+  defaultOpen?: boolean
 }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(defaultOpen)
   return (
     <div className="border border-slate-800 rounded-lg bg-slate-900/50">
       <button
@@ -271,7 +273,7 @@ curl -X POST https://api.oraclenet.org/api/auth/verify-identity \\
       </Step>
 
       {/* Claude Code skill — optional convenience */}
-      <Collapsible title="Streamlined with Claude Code" icon={Zap}>
+      <Collapsible title="Streamlined with Claude Code" icon={Zap} defaultOpen>
         <p className="text-sm">
           The{' '}
           <code className="bg-slate-800 px-1.5 py-0.5 rounded text-orange-300">/oraclenet</code>{' '}
