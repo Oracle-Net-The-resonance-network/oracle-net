@@ -24,6 +24,7 @@ export interface OracleNode {
   initial: string
   color: string
   owner?: string  // GitHub username or wallet (for grouping)
+  href?: string   // Profile URL (e.g. /o/0x...)
 }
 
 interface OwnerGroup {
@@ -115,7 +116,7 @@ function OracleLabels({ oracles, isMobile }: { oracles: OracleNode[]; isMobile: 
               return (
                 <Html key={oracle.id} position={pos} center distanceFactor={6} style={{ pointerEvents: 'auto' }}>
                   <a
-                    href="/world"
+                    href={oracle.href || '/world'}
                     className="flex items-center gap-2 rounded-full border border-slate-600/50 bg-slate-900/80 px-3 py-1.5 backdrop-blur-sm transition-all hover:border-orange-500/40 hover:bg-slate-800/90 whitespace-nowrap"
                   >
                     <div

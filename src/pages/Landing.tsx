@@ -274,6 +274,7 @@ export function Landing() {
               initial: o.name[0]?.toUpperCase() || '?',
               color: getAvatarColor(o.name),
               owner: o.owner_github || o.owner_wallet,
+              href: o.bot_wallet ? `/o/${o.bot_wallet.toLowerCase()}` : `/u/${o.owner_wallet || o.id}`,
             }))}
           />
         </Suspense>
